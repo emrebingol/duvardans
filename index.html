@@ -1,0 +1,1283 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#160f33">
+<title>DuvarDans</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Figtree:wght@400;600;800&display=swap">
+<style>
+/* Layout: one full-screen stage (camera + canvas); menus are sheets laid over it. Single dark look by choice. */
+:root{
+  color-scheme: dark;
+  --night:#160f33; --night-2:#241a52; --night-3:#35277a;
+  --coral:#ff4f6b; --sun:#ffd447; --mint:#3ff2c0; --sky:#58b7ff;
+  --cream:#fff5e4; --mute:#b6acd9;
+  --display:"Bungee","Arial Black",Impact,sans-serif;
+  --body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
+body{background:var(--night);color:var(--cream);font:400 16px/1.45 var(--body);-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+[hidden]{display:none!important}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:3px solid var(--sun);outline-offset:3px}
+
+#cam{position:fixed;inset:0;width:100%;height:100%;object-fit:contain;transform:scaleX(-1);background:var(--night)}
+#stage{position:fixed;inset:0;width:100%;height:100%;display:block}
+
+/* HUD */
+#hud{position:fixed;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between;
+  padding:calc(env(safe-area-inset-top,0px) + 10px) 16px calc(env(safe-area-inset-bottom,0px) + 12px)}
+.hud-top{display:grid;grid-template-columns:1fr auto 1fr;align-items:start;gap:8px}
+.hud-score{font:400 clamp(26px,7vw,44px)/1 var(--display);font-variant-numeric:tabular-nums;text-shadow:0 3px 0 var(--night)}
+.hud-label{font:800 11px/1 var(--body);letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin-bottom:5px}
+.hud-combo{text-align:center}
+.hud-mult{font:400 clamp(30px,9vw,52px)/1 var(--display);color:var(--sun);text-shadow:0 3px 0 var(--night)}
+.hud-streak{font:800 12px/1 var(--body);letter-spacing:.1em;color:var(--cream);margin-top:4px}
+.hud-right{display:flex;justify-content:flex-end;gap:8px;align-items:center}
+.chip{font:800 11px/1 var(--body);letter-spacing:.14em;padding:7px 9px;border-radius:4px;background:var(--sun);color:var(--night)}
+#pauseBtn{pointer-events:auto;width:48px;height:48px;border:3px solid var(--cream);border-radius:50%;background:rgba(22,15,51,.6);display:grid;place-items:center}
+#pauseBtn i{display:block;width:14px;height:16px;border-inline:5px solid var(--cream)}
+.bar{height:14px;background:rgba(22,15,51,.7);border:2px solid var(--cream);border-radius:8px;overflow:hidden}
+.bar > b{display:block;height:100%;width:50%;background:var(--mint);transition:width .18s linear,background-color .2s}
+.bar.low > b{background:var(--coral)}
+.energy{margin-top:10px}
+.progress{height:6px;border:0;border-radius:3px;background:rgba(255,245,228,.18)}
+.progress > b{background:var(--sun);width:0;transition:none}
+
+/* Sheets */
+.sheet{position:fixed;inset:0;overflow-y:auto;background:
+  radial-gradient(120% 70% at 50% 0%,var(--night-3) 0%,transparent 60%),var(--night);
+  padding:calc(env(safe-area-inset-top,0px) + 28px) 20px calc(env(safe-area-inset-bottom,0px) + 28px)}
+.sheet.glass{background:rgba(22,15,51,.86);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.wrap{max-width:460px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+.sheet.center .wrap{min-height:100%;justify-content:center;text-align:center}
+h1{font:400 clamp(52px,17vw,84px)/.86 var(--display);margin:0;letter-spacing:-.01em;text-shadow:5px 5px 0 var(--coral)}
+h1 span{display:block}
+h1 span + span{color:var(--sun);text-shadow:5px 5px 0 var(--night-3);margin-left:.5em}
+h2{font:400 clamp(30px,9vw,44px)/1 var(--display);margin:0;text-wrap:balance}
+.tag{font-size:18px;font-weight:600;margin:0;color:var(--cream)}
+.poses{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.poses canvas{width:100%;aspect-ratio:3/4;border-radius:6px;display:block}
+ol.how{margin:0;padding:0;list-style:none;counter-reset:s;display:flex;flex-direction:column;gap:8px}
+ol.how li{counter-increment:s;display:grid;grid-template-columns:28px 1fr;gap:10px;align-items:baseline;color:var(--mute)}
+ol.how li::before{content:counter(s);font:400 18px/1 var(--display);color:var(--sun)}
+fieldset{border:0;margin:0;padding:0;min-width:0;display:flex;flex-direction:column;gap:8px}
+legend{font:800 11px/1 var(--body);letter-spacing:.14em;text-transform:uppercase;color:var(--mute);padding:0;margin-bottom:8px}
+.levels{display:flex;flex-direction:column;gap:8px}
+.opt{position:relative;display:block}
+.opt input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}
+.opt span{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:13px 14px;border:2px solid var(--night-3);border-radius:10px;background:var(--night-2)}
+.opt b{font:400 17px/1.1 var(--display)}
+.opt small{font-size:13px;color:var(--mute);font-variant-numeric:tabular-nums;white-space:nowrap}
+.opt input:checked + span{border-color:var(--sun);background:var(--night-3)}
+.opt input:checked + span b{color:var(--sun)}
+.opt input:focus-visible + span{outline:3px solid var(--sun);outline-offset:3px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.seg .opt span{justify-content:center}
+.check{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center}
+.check input{width:24px;height:24px;accent-color:var(--sun);margin:0}
+.check b{display:block;font-weight:800}
+.check small{color:var(--mute);font-size:14px}
+.actions{display:flex;flex-direction:column;gap:10px}
+.btn{border:0;border-radius:12px;padding:17px 18px;font:400 18px/1.1 var(--display);background:var(--coral);color:var(--cream);box-shadow:0 5px 0 #b12a45}
+.btn:active{transform:translateY(3px);box-shadow:0 2px 0 #b12a45}
+.btn.ghost{background:transparent;border:2px solid var(--night-3);box-shadow:none;color:var(--cream);font:800 15px/1.1 var(--body);padding:14px}
+.note{font-size:13px;color:var(--mute);margin:0}
+.err{background:#4a1630;border:2px solid var(--coral);border-radius:10px;padding:12px 14px;margin:0;font-weight:600}
+
+/* Calibration prompt */
+#calib{position:fixed;left:0;right:0;bottom:0;padding:16px 20px calc(env(safe-area-inset-bottom,0px) + 22px);text-align:center;
+  background:linear-gradient(transparent,rgba(22,15,51,.92) 40%)}
+#calib p{margin:0 auto;max-width:420px;font:400 clamp(20px,6vw,28px)/1.15 var(--display);text-wrap:balance}
+#calib small{display:block;margin-top:8px;color:var(--mute);font-size:14px}
+
+/* Results */
+.stars{font-size:54px;line-height:1;letter-spacing:8px;color:var(--night-3)}
+.stars .on{color:var(--sun)}
+.big{font:400 clamp(48px,15vw,72px)/1 var(--display);font-variant-numeric:tabular-nums;color:var(--sun)}
+dl.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0;text-align:left}
+dl.stats div{background:var(--night-2);border-radius:10px;padding:11px 12px;min-width:0}
+dl.stats dt{font:800 10.5px/1.2 var(--body);letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
+dl.stats dd{margin:5px 0 0;font:400 22px/1 var(--display);font-variant-numeric:tabular-nums}
+.spinner{width:54px;height:54px;border:6px solid var(--night-3);border-top-color:var(--sun);border-radius:50%;margin:0 auto;animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spinner{animation-duration:2.5s}}
+.seg.two{grid-template-columns:repeat(2,1fr)}
+.stack{display:flex;flex-direction:column;gap:22px}
+.kg{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.kg input{width:5.2ch;font:400 30px/1 var(--display);color:var(--cream);background:var(--night-2);border:2px solid var(--night-3);border-radius:10px;padding:10px 12px;font-variant-numeric:tabular-nums}
+.kg input:focus{border-color:var(--sun);outline:none}
+.kg b{font:400 20px/1 var(--display)}
+.kg small{color:var(--mute);font-size:14px}
+ol.plan{margin:0;padding:0;list-style:none;counter-reset:m;display:flex;flex-direction:column;gap:6px}
+ol.plan li{counter-increment:m;display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:baseline;padding:10px 12px;border-radius:10px;background:var(--night-2)}
+ol.plan li::before{content:counter(m);font:400 16px/1 var(--display);color:var(--sun)}
+ol.plan b{font-weight:800}
+ol.plan small{color:var(--mute);font-size:13px;text-align:right}
+.mrows{display:flex;flex-direction:column;gap:8px;text-align:left}
+.mrow{display:grid;grid-template-columns:1fr auto;gap:4px 12px;background:var(--night-2);border-radius:10px;padding:12px 14px;min-width:0}
+.mrow b{font-weight:800}
+.mrow .sets{font:400 20px/1 var(--display);font-variant-numeric:tabular-nums;color:var(--sun);text-align:right}
+.mrow small{color:var(--mute);font-size:13px}
+.mrow small + small{text-align:right}
+.chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.chips span{background:var(--night-3);padding:7px 11px;border-radius:999px;font-weight:800;font-size:13px}
+@media (min-width:560px){.levels{flex-direction:row}.levels .opt{flex:1}.levels .opt span{flex-direction:column;gap:6px}}
+</style>
+</head>
+<body>
+<video id="cam" playsinline muted hidden></video>
+<canvas id="stage"></canvas>
+
+<div id="hud" hidden>
+  <div>
+    <div class="hud-top">
+      <div><div class="hud-label">Puan</div><div class="hud-score" id="hScore">0</div></div>
+      <div class="hud-combo"><div class="hud-mult" id="hMult">x1</div><div class="hud-streak" id="hStreak"></div></div>
+      <div class="hud-right"><span class="chip" id="hDemo" hidden>DEMO</span>
+        <button id="pauseBtn" type="button" aria-label="Duraklat"><i></i></button></div>
+    </div>
+    <div class="bar energy" id="hEnergyBar"><b id="hEnergy"></b></div>
+  </div>
+  <div class="bar progress"><b id="hProg"></b></div>
+</div>
+
+<section id="menu" class="sheet">
+  <div class="wrap">
+    <h1><span>DUVAR</span><span>DANS</span></h1>
+    <p class="tag">Duvar geliyor. Pozu al, içinden geç.</p>
+    <div class="poses" id="poseStrip" aria-hidden="true"></div>
+    <ol class="how">
+      <li>Telefonu dik yasla, ekranı sana baksın.</li>
+      <li>İki üç metre geri çekil. Baştan ayağa kadraja gir.</li>
+      <li>Duvardaki boşluğun şeklini al. Bloklardan kaç, hedefe yumruk at.</li>
+    </ol>
+    <fieldset>
+      <legend>Mod</legend>
+      <div class="seg two" id="kinds">
+        <label class="opt"><input type="radio" name="kind" id="kind-dans" value="dans" checked><span><b>Dans</b></span></label>
+        <label class="opt"><input type="radio" name="kind" id="kind-guc" value="guc"><span><b>Güç</b></span></label>
+      </div>
+      <p class="note" id="kindNote">Poz duvarları, kaçınma ve yumruk. Ekipman gerekmez.</p>
+    </fieldset>
+    <div class="stack" id="danceOpts">
+      <fieldset>
+        <legend>Parça</legend>
+        <div class="levels" id="levels"></div>
+      </fieldset>
+      <fieldset>
+        <legend>Zorluk</legend>
+        <div class="seg" id="diffs"></div>
+      </fieldset>
+      <label class="check"><input type="checkbox" id="training">
+        <span><b>Antrenman modu</b><small>Enerji bitmez, tur yarıda kesilmez.</small></span></label>
+    </div>
+    <div class="stack" id="gucOpts" hidden>
+      <label class="kg" for="gucKg"><span class="hud-label" style="flex-basis:100%">Dambıl ağırlığı</span>
+        <input id="gucKg" type="number" inputmode="decimal" min="0.5" max="50" step="0.5" value="5"><b>kg</b><small>tek dambıl</small></label>
+      <fieldset>
+        <legend>Hareket başına set</legend>
+        <div class="seg" id="gucSets">
+          <label class="opt"><input type="radio" name="gsets" id="gsets-1" value="1"><span><b>1 set</b></span></label>
+          <label class="opt"><input type="radio" name="gsets" id="gsets-2" value="2"><span><b>2 set</b></span></label>
+          <label class="opt"><input type="radio" name="gsets" id="gsets-3" value="3" checked><span><b>3 set</b></span></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Setler arası dinlenme</legend>
+        <div class="seg" id="gucRestSel">
+          <label class="opt"><input type="radio" name="grest" id="grest-60" value="60"><span><b>60 sn</b></span></label>
+          <label class="opt"><input type="radio" name="grest" id="grest-90" value="90" checked><span><b>90 sn</b></span></label>
+          <label class="opt"><input type="radio" name="grest" id="grest-120" value="120"><span><b>120 sn</b></span></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Bu seans</legend>
+        <ol class="plan" id="gucPlan"></ol>
+        <p class="note" id="gucInfo"></p>
+      </fieldset>
+    </div>
+    <p class="err" id="menuErr" hidden></p>
+    <div class="actions">
+      <button class="btn" id="startBtn" type="button">Kamerayı aç ve başla</button>
+      <button class="btn ghost" id="demoBtn" type="button">Kamerasız demoyu izle</button>
+    </div>
+    <p class="note">Görüntü cihazından çıkmaz. Hareket takibi tarayıcının içinde çalışır.</p>
+  </div>
+</section>
+
+<section id="loading" class="sheet center" hidden>
+  <div class="wrap"><div class="spinner"></div><h2 id="loadText">Kamera açılıyor</h2>
+    <p class="note">İlk açılışta takip modeli iner. Birkaç saniye sürebilir.</p></div>
+</section>
+
+<div id="calib" hidden><p id="calibText">Kadraja gir</p><small>Kolların iki yanda, iki saniye kıpırdamadan dur.</small></div>
+
+<section id="pause" class="sheet glass center" hidden>
+  <div class="wrap"><h2 id="pauseTitle">Duraklatıldı</h2><p class="tag" id="pauseSub" hidden></p>
+    <div class="actions" id="pauseActions">
+      <button class="btn" id="resumeBtn" type="button">Devam et</button>
+      <button class="btn ghost" id="quitBtn" type="button">Menüye dön</button>
+    </div></div>
+</section>
+
+<section id="results" class="sheet glass center" hidden>
+  <div class="wrap">
+    <h2 id="rTitle">Tur bitti</h2>
+    <div class="stars" id="rStars" aria-label=""></div>
+    <div><div class="hud-label">Puan</div><div class="big" id="rScore">0</div><p class="note" id="rBest"></p></div>
+    <dl class="stats">
+      <div><dt>İsabet</dt><dd id="rAcc">0%</dd></div>
+      <div><dt>En uzun seri</dt><dd id="rCombo">0</dd></div>
+      <div><dt>Çömelme</dt><dd id="rSquat">0</dd></div>
+      <div><dt>Mükemmel</dt><dd id="rPerfect">0</dd></div>
+      <div><dt>İyi</dt><dd id="rGood">0</dd></div>
+      <div><dt>Kaçtı</dt><dd id="rMiss">0</dd></div>
+      <div><dt>Kaçınma</dt><dd id="rDodge">0</dd></div>
+      <div><dt>Yumruk</dt><dd id="rPunch">0</dd></div>
+      <div><dt>Elmas</dt><dd id="rGem">0</dd></div>
+    </dl>
+    <div class="actions">
+      <button class="btn" id="againBtn" type="button">Tekrar oyna</button>
+      <button class="btn ghost" id="menuBtn" type="button">Menüye dön</button>
+    </div>
+  </div>
+</section>
+
+<section id="gResults" class="sheet glass center" hidden>
+  <div class="wrap">
+    <h2>Antrenman bitti</h2>
+    <div><div class="hud-label">Toplam kaldırılan</div><div class="big" id="gVol">0 kg</div><p class="note" id="gNote"></p></div>
+    <div class="mrows" id="gMoves"></div>
+    <div><div class="hud-label">Çalışan bölgeler</div><div class="chips" id="gMuscles"></div></div>
+    <div class="actions">
+      <button class="btn" id="gAgainBtn" type="button">Yeni seans</button>
+      <button class="btn ghost" id="gMenuBtn" type="button">Menüye dön</button>
+    </div>
+  </div>
+</section>
+
+<script>
+'use strict';
+/* ============================== config ============================== */
+const MP_VERSION = '1.1.0';
+const MP_URL   = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/vision_bundle.mjs`;
+const MP_WASM  = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
+const MP_MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+
+const C = {night:'#160f33', night2:'#241a52', night3:'#35277a', coral:'#ff4f6b', sun:'#ffd447', mint:'#3ff2c0', sky:'#58b7ff', cream:'#fff5e4'};
+const WALL_COLORS = ['#ff4f6b', '#ff8a3d', '#b46bff', '#ff4fa3'];
+const FONT_D = '"Bungee","Arial Black",Impact,sans-serif';
+const PERFECT = 0.85, GOOD = 0.65;
+const POINTS = {perfect:100, good:50, gem:20, punch:75, dodge:50};
+const MULTS = [1, 2, 4, 8];
+const LEAD = 1.0;            // seconds of silence before beat 0
+const DEPTH = 5.5;           // corridor depth factor for wall scaling
+
+const DIFFS = {
+  kolay: {label:'Kolay', travel:3.0, step:4, tol:62, maxTier:2, drain:8,  gain:6},
+  orta:  {label:'Orta',  travel:2.5, step:4, tol:50, maxTier:3, drain:11, gain:5, fill:true},
+  zor:   {label:'Zor',   travel:2.0, step:2, tol:40, maxTier:3, drain:14, gain:4, fill:true},
+};
+const LEVELS = [
+  {id:'isinma', name:'Isınma Turu', bpm:100, seed:7},
+  {id:'tempo',  name:'Tempo',       bpm:116, seed:21},
+  {id:'zirve',  name:'Zirve',       bpm:128, seed:99},
+];
+
+/* ============================== helpers ============================== */
+const $ = id => document.getElementById(id);
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const RAD = Math.PI / 180;
+const fmt = n => Math.round(n).toLocaleString('tr-TR');
+function rng(seed){ let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const store = {
+  get(){ try { return JSON.parse(localStorage.getItem('duvardans.best') || '{}'); } catch (e) { return {}; } },
+  set(o){ try { localStorage.setItem('duvardans.best', JSON.stringify(o)); } catch (e) {} },
+};
+
+/* ============================== poses ==============================
+   Angles in degrees in the mirrored screen plane:
+   0 = pointing down, 90 = straight out to that limb's own side, 180 = up, negative = across the body.
+   a: [upperArmL, forearmL, upperArmR, forearmR]   l: [thighL, shinL, thighR, shinR]
+   tier: 1 arms only, 2 needs balance or reach, 3 squat or lunge (a "hard transition").            */
+const P = (name, a, o = {}) => ({name, a, l: o.l || [6, 2, 6, 2], lean: o.lean || 0, crouch: o.crouch || 0, legs: !!o.legs, tier: o.tier || 1, shift: o.shift || 0});
+const mirrorPose = (p, name) => ({...p, name, a: [p.a[2], p.a[3], p.a[0], p.a[1]], l: [p.l[2], p.l[3], p.l[0], p.l[1]], lean: -p.lean, shift: -p.shift});
+const SQUAT_LEGS = [62, -22, 62, -22];
+const POSES = {
+  t:       P('T', [90, 90, 90, 90]),
+  y:       P('Y', [140, 140, 140, 140]),
+  up:      P('Eller yukarı', [172, 176, 172, 176]),
+  leftUp:  P('Sol kol yukarı', [172, 176, 14, 8]),
+  hips:    P('Eller belde', [42, -48, 42, -48]),
+  cactus:  P('Kaktüs', [90, 180, 90, 180]),
+  discoL:  P('Disko sol', [135, 135, 50, 50], {tier: 2}),
+  dabL:    P('Dab sol', [125, 125, 95, -125], {tier: 2}),
+  leanL:   P('Sola esne', [20, 10, 195, 215], {lean: -20, tier: 2}),
+  star:    P('Yıldız', [125, 125, 125, 125], {l: [32, 32, 32, 32], legs: true, tier: 2}),
+  squat:   P('Çömel', [90, 90, 90, 90], {crouch: .3, l: SQUAT_LEGS, tier: 3}),
+  squatUp: P('Çömel, eller yukarı', [150, 160, 150, 160], {crouch: .3, l: SQUAT_LEGS, tier: 3}),
+  lungeL:  P('Sola hamle', [42, -48, 42, -48], {l: [58, -4, 34, 34], legs: true, tier: 3, shift: -.3}),
+};
+POSES.rightUp = mirrorPose(POSES.leftUp, 'Sağ kol yukarı');
+POSES.discoR  = mirrorPose(POSES.discoL, 'Disko sağ');
+POSES.dabR    = mirrorPose(POSES.dabL, 'Dab sağ');
+POSES.leanR   = mirrorPose(POSES.leanL, 'Sağa esne');
+POSES.lungeR  = mirrorPose(POSES.lungeL, 'Sağa hamle');
+const POSE_IDS = Object.keys(POSES);
+const REST = {a: [12, 8, 12, 8], l: [6, 2, 6, 2], lean: 0, crouch: 0, shift: 0};
+
+/* Body proportions, all in video pixels. Measured at calibration; this is the fallback and the demo body. */
+function defaultBody(sw, cx, groundY){
+  return {sw, torso: 1.35 * sw, hipW: .6 * sw, ua: .8 * sw, fa: .7 * sw, th: 1.1 * sw, sh: 1.1 * sw,
+          cx, groundY, legLen: 2.2 * sw, headUp: .72 * sw};
+}
+const pt = (x, y) => ({x, y, v: 1});
+
+/* Pose data -> joint positions. The wall cutout and the scoring target both come from here, so they cannot disagree. */
+function buildSkeleton(p, b, lane = 0){
+  const dir = (s, deg) => [s * Math.sin(deg * RAD), Math.cos(deg * RAD)];
+  const ext = (t, s) => b.th * Math.cos(t * RAD) + b.sh * Math.cos(s * RAD);
+  const e = Math.max(ext(p.l[0], p.l[1]), ext(p.l[2], p.l[3]));
+  const k = Math.min(1, ((1 - p.crouch) * b.legLen) / e);       // foreshorten legs so the feet stay on the floor
+  const hc = pt(b.cx + (lane * 1.2 + (p.shift || 0)) * b.sw, b.groundY - k * e);
+  const u = [Math.sin(p.lean * RAD), -Math.cos(p.lean * RAD)], v = [-u[1], u[0]];
+  const hg = Math.cos((p.hinge || 0) * RAD), tl = b.torso * hg, hu = b.headUp * (p.hinge ? hg * .8 : 1);   // hinge: leaning toward the camera shortens the torso on screen
+  const sc = pt(hc.x + u[0] * tl, hc.y + u[1] * tl);
+  const J = {hc, sc, nose: pt(sc.x + u[0] * hu, sc.y + u[1] * hu)};
+  J.ls = pt(sc.x - v[0] * b.sw / 2, sc.y - v[1] * b.sw / 2); J.rs = pt(sc.x + v[0] * b.sw / 2, sc.y + v[1] * b.sw / 2);
+  J.lh = pt(hc.x - b.hipW / 2, hc.y); J.rh = pt(hc.x + b.hipW / 2, hc.y);
+  const limb = (from, s, a1, a2, l1, l2) => { const d1 = dir(s, a1), d2 = dir(s, a2); const m = pt(from.x + d1[0] * l1, from.y + d1[1] * l1); return [m, pt(m.x + d2[0] * l2, m.y + d2[1] * l2)]; };
+  [J.le, J.lw] = limb(J.ls, -1, p.a[0], p.a[1], b.ua, b.fa);
+  [J.re, J.rw] = limb(J.rs,  1, p.a[2], p.a[3], b.ua, b.fa);
+  [J.lk, J.la] = limb(J.lh, -1, p.l[0], p.l[1], b.th * k, b.sh * k);
+  [J.rk, J.ra] = limb(J.rh,  1, p.l[2], p.l[3], b.th * k, b.sh * k);
+  return J;
+}
+
+/* ============================== measuring and scoring ============================== */
+const segAngle = (side, A, B) => Math.atan2((B.x - A.x) * side, B.y - A.y) / RAD;
+const angDiff = (a, b) => { let d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
+const simAngle = (a, target, tol) => clamp(1 - Math.max(0, angDiff(a, target) - 10) / tol);
+const mid = (A, B) => ({x: (A.x + B.x) / 2, y: (A.y + B.y) / 2, v: Math.min(A.v, B.v)});
+const dist = (A, B) => Math.hypot(A.x - B.x, A.y - B.y);
+const vis = (...js) => js.every(j => j && j.v >= .5);
+
+function measure(J, b){
+  const hc = J.hc || mid(J.lh, J.rh), sc = J.sc || mid(J.ls, J.rs);
+  const ankles = [J.la, J.ra].filter(a => a.v >= .5);
+  const ankleY = ankles.length ? ankles.reduce((s, a) => s + a.y, 0) / ankles.length : b.groundY;
+  return {hc, sc, depth: clamp(1 - (ankleY - hc.y) / b.legLen, -.2, .8), off: (hc.x - b.cx) / b.sw,
+          lean: Math.atan2(sc.x - hc.x, -(sc.y - hc.y)) / RAD};
+}
+
+function scorePose(p, lane, J, b, tol){
+  const m = measure(J, b), parts = {};
+  let sum = 0, wsum = 0;
+  const add = (key, sim, w) => { parts[key] = sim; sum += sim * w; wsum += w; };
+  const seg = (key, side, A, B, target, w) => add(key, vis(A, B) ? simAngle(segAngle(side, A, B), target, tol) : 0, w);
+  seg('uaL', -1, J.ls, J.le, p.a[0], 1); seg('faL', -1, J.le, J.lw, p.a[1], 1);
+  seg('uaR',  1, J.rs, J.re, p.a[2], 1); seg('faR',  1, J.re, J.rw, p.a[3], 1);
+  const armMin = Math.min(parts.uaL, parts.faL, parts.uaR, parts.faR);
+  let gate = armMin >= .2;                                   // one limb pointing the wrong way cannot be averaged away
+  if (p.legs) {
+    const legSeg = (key, side, A, B, target) => add(key, vis(A, B) ? simAngle(segAngle(side, A, B), target, tol * .6) : 0, .6);
+    legSeg('thL', -1, J.lh, J.lk, p.l[0]); legSeg('shL', -1, J.lk, J.la, p.l[1]);
+    legSeg('thR',  1, J.rh, J.rk, p.l[2]); legSeg('shR',  1, J.rk, J.ra, p.l[3]);
+    if ((parts.thL + parts.shL + parts.thR + parts.shR) / 4 < .65) gate = false;
+  }
+  if (p.lean) { add('torso', clamp(1 - Math.max(0, Math.abs(m.lean - p.lean) - 6) / (tol * .4)), 1.5); if (parts.torso < .5) gate = false; }
+  let crouchOk = 1;
+  if (p.crouch) { crouchOk = clamp(m.depth / (p.crouch * .75)); add('legs', crouchOk, 2); }
+  let total = sum / wsum;
+  if (!gate) total = Math.min(total, .6);
+  if (crouchOk < .5) total = Math.min(total, .5);
+  if (Math.abs(m.off - (lane * 1.2 + p.shift)) > .75) total = Math.min(total, .4);
+  return {total, parts};
+}
+
+/* ============================== beat maps ==============================
+   Level format: { bpm, beats, events: [{ beat, type, poseId | kind | side | x,y }] }                                    */
+const GEM_SPOTS = [[-1.5, -.5], [1.5, -.5], [-1.2, -1.3], [1.2, -1.3], [-1.6, .3], [1.6, .3]];
+function buildMap(level, diffKey){
+  const d = DIFFS[diffKey], li = LEVELS.indexOf(level), rnd = rng(level.seed * 31 + diffKey.length);
+  const beats = Math.round(90 * level.bpm / 60 / 4) * 4;
+  const maxTier = Math.min(d.maxTier, li + 2);
+  const pool = t => POSE_IDS.filter(id => POSES[id].tier <= t);
+  const pick = arr => arr[Math.floor(rnd() * arr.length)];
+  const events = [];
+  let b = 8, last = '';
+  while (b <= beats - 8) {
+    const p = b / beats, sec = p < .14 ? 'warm' : p < .42 ? 'build' : p < .86 ? 'peak' : 'cool';
+    const r = rnd(); let ev;
+    const pose = tier => { let id, n = 0; do { id = pick(pool(tier)); } while (id === last && ++n < 6); last = id; return {type: 'pose', poseId: id, lane: 0}; };
+    if (sec === 'warm' || sec === 'cool') ev = pose(1);
+    else if (r < .62) ev = pose(sec === 'peak' ? maxTier : Math.min(2, maxTier));
+    else if (r < .82) { ev = {type: 'dodge', kind: sec === 'peak' && rnd() < .4 ? 'duck' : rnd() < .5 ? 'L' : 'R'}; last = ''; }
+    else if (sec === 'peak') { ev = {type: 'punch', side: rnd() < .5 ? -1 : 1}; last = ''; }
+    else ev = pose(Math.min(2, maxTier));
+    ev.beat = b; events.push(ev);
+    const hard = (ev.type === 'pose' && POSES[ev.poseId].tier === 3) || ev.type === 'dodge';
+    let step = d.step;
+    if (sec === 'warm' || sec === 'cool' || hard) step = Math.max(step, 4);     // never two hard transitions under 2 beats apart
+    if (step >= 4 && sec !== 'warm') {
+      const f = rnd();
+      if (f < .5) { const g = pick(GEM_SPOTS); events.push({type: 'gem', beat: b + 2, x: g[0], y: g[1]}); }
+      else if (d.fill && sec === 'peak' && !hard && f < .7) events.push({type: 'punch', beat: b + 2, side: rnd() < .5 ? -1 : 1});
+    }
+    b += step;
+  }
+  events.sort((a, c) => a.beat - c.beat);
+  return {bpm: level.bpm, beats, events};
+}
+
+/* ============================== audio ============================== */
+let actx = null, master = null, noiseBuf = null;
+function initAudio(){
+  if (actx) { actx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+  actx = new AC(); master = actx.createGain(); master.gain.value = .7;
+  const comp = actx.createDynamicsCompressor(); master.connect(comp); comp.connect(actx.destination);
+  noiseBuf = actx.createBuffer(1, actx.sampleRate * .3, actx.sampleRate);
+  const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  actx.resume();
+}
+function tone(t, f0, f1, dur, type, vol, filter){
+  if (!actx) return;
+  const o = actx.createOscillator(), g = actx.createGain(); o.type = type;
+  o.frequency.setValueAtTime(f0, t); if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .008); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  let node = o; if (filter) { const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = filter; o.connect(f); node = f; }
+  node.connect(g); g.connect(master); o.start(t); o.stop(t + dur + .02);
+}
+function noise(t, dur, vol, hp){
+  if (!actx) return;
+  const s = actx.createBufferSource(); s.buffer = noiseBuf;
+  const f = actx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp;
+  const g = actx.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  s.connect(f); f.connect(g); g.connect(master); s.start(t); s.stop(t + dur + .02);
+}
+const CHORDS = [[110, 220, 261.6, 329.6], [87.3, 174.6, 220, 261.6], [130.8, 261.6, 329.6, 392], [98, 196, 246.9, 293.7]]; // Am F C G
+const music = {step: 0, timer: 0};
+function scheduleMusic(){
+  if (!actx || clock.perf || G.mode !== 'play') return;
+  const half = G.spb / 2;
+  for (;;) {
+    const i = music.step, t = clock.t0 + LEAD + i * half;
+    if (t > actx.currentTime + .25) break;
+    music.step++;
+    if (t < actx.currentTime - .05) continue;
+    const beat = i / 2; if (beat > G.map.beats + 4) continue;
+    const p = beat / G.map.beats, sec = G.kind === 'guc' ? gucSection() : p < .14 ? 0 : p < .42 ? 1 : p < .86 ? 2 : 3;
+    const ch = CHORDS[Math.floor(beat / 4) % 4], n = i % 8;
+    if (i % 2 === 0) tone(t, 150, 45, .22, 'sine', sec === 3 ? .5 : .8);
+    if (i % 2 === 1 || sec === 2) noise(t, .04, sec === 2 ? .14 : .1, 7000);
+    if (sec >= 1 && (n === 2 || n === 6)) noise(t, .12, .22, 1800);
+    if (sec >= 1 && sec < 3 && (n === 0 || n === 3 || n === 6)) tone(t, ch[0], ch[0], half * 1.4, 'sawtooth', .22, 500);
+    if (sec === 3 && n === 0) tone(t, ch[0], ch[0], half * 6, 'triangle', .25);
+    if (sec === 2) tone(t, ch[1 + (i * 5) % 3] * 2, ch[1 + (i * 5) % 3] * 2, half * .9, 'square', .05, 2400);
+    else if (sec === 1 && i % 4 === 0) tone(t, ch[1 + (i / 4) % 3] * 2, ch[1 + (i / 4) % 3] * 2, half * 1.6, 'triangle', .09);
+  }
+}
+const sfx = {
+  hit(perfect){ if (!actx) return; const t = actx.currentTime, f = 440 * Math.pow(2, Math.min(G.combo, 16) / 12); tone(t, f, f, .12, 'triangle', .3); tone(t + .07, f * 1.5, f * 1.5, .16, 'triangle', .3); if (perfect) tone(t + .14, f * 2, f * 2, .22, 'sine', .25); noise(t, .18, .2, 3000); },
+  miss(){ if (!actx) return; const t = actx.currentTime; tone(t, 110, 42, .3, 'sine', .7); noise(t, .1, .15, 400); },
+  gem(){ if (!actx) return; const t = actx.currentTime; tone(t, 1320, 1760, .14, 'sine', .22); },
+  punch(){ if (!actx) return; const t = actx.currentTime; noise(t, .09, .5, 900); tone(t, 220, 90, .14, 'square', .25, 900); },
+  end(ok){ if (!actx) return; const t = actx.currentTime; (ok ? [523, 659, 784, 1047] : [392, 330, 262, 196]).forEach((f, i) => tone(t + i * .13, f, f, .3, 'triangle', .3)); },
+};
+
+/* Song clock: the audio clock drives all timing; a performance.now() fallback covers browsers without audio. */
+const clock = {t0: 0, perf: false, pausedAt: 0,
+  now(){ return this.perf || !actx ? performance.now() / 1000 : actx.currentTime; },
+  song(){ return this.now() - this.t0 - LEAD; },
+  start(){ this.perf = !actx || actx.state !== 'running'; this.t0 = this.now(); const p0 = performance.now(), a0 = actx ? actx.currentTime : 0;
+    if (!this.perf) setTimeout(() => { if (G.mode === 'play' && actx.currentTime - a0 < .1) { this.perf = true; this.t0 = p0 / 1000; } }, 500); },
+  pause(){ this.pausedAt = this.now(); if (!this.perf && actx) actx.suspend(); },
+  resume(){ if (this.perf || !actx) this.t0 += this.now() - this.pausedAt; else actx.resume(); },
+};
+
+/* ============================== tracking ============================== */
+const video = $('cam');
+const LM = {nose: 0, ls: 11, rs: 12, le: 13, re: 14, lw: 15, rw: 16, lh: 23, rh: 24, lk: 25, rk: 26, la: 27, ra: 28};
+const tracker = {lm: null, J: null, lastVT: -1, seenAt: 0, ready: false};
+async function startCamera(){
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw Object.assign(new Error('insecure'), {kind: 'insecure'});
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'user', width: {ideal: 640}, height: {ideal: 480}}, audio: false}); }
+  catch (e) { throw Object.assign(e, {kind: 'camera'}); }
+  video.srcObject = stream; video.hidden = false; await video.play();
+  VW = video.videoWidth || 480; VH = video.videoHeight || 640;
+}
+function stopCamera(){ const s = video.srcObject; if (s) s.getTracks().forEach(t => t.stop()); video.srcObject = null; video.hidden = true; }
+async function loadTracker(){
+  if (tracker.lm) return;
+  try {
+    const mp = await import(MP_URL);
+    const files = await mp.FilesetResolver.forVisionTasks(MP_WASM);
+    const make = delegate => mp.PoseLandmarker.createFromOptions(files, {baseOptions: {modelAssetPath: MP_MODEL, delegate}, runningMode: 'VIDEO', numPoses: 1});
+    try { tracker.lm = await make('GPU'); } catch (e) { tracker.lm = await make('CPU'); }
+  } catch (e) { throw Object.assign(e, {kind: 'model'}); }
+}
+function track(now){
+  if (!tracker.lm || video.readyState < 2 || video.currentTime === tracker.lastVT) return;
+  tracker.lastVT = video.currentTime;
+  if (video.videoWidth) { VW = video.videoWidth; VH = video.videoHeight; }
+  let res; try { res = tracker.lm.detectForVideo(video, now); } catch (e) { return; }
+  const lm = res && res.landmarks && res.landmarks[0];
+  if (!lm) { if (now - tracker.seenAt > 400) tracker.J = null; return; }
+  tracker.seenAt = now;
+  const prev = tracker.J, J = {};
+  for (const k in LM) {
+    const p = lm[LM[k]], x = (1 - p.x) * VW, y = p.y * VH;                 // mirror x: the screen is a selfie view
+    J[k] = prev ? {x: lerp(prev[k].x, x, .55), y: lerp(prev[k].y, y, .55), v: p.visibility ?? 1} : {x, y, v: p.visibility ?? 1};
+  }
+  J.hc = mid(J.lh, J.rh); J.sc = mid(J.ls, J.rs);
+  tracker.J = J;
+}
+
+/* ============================== demo bot ============================== */
+const bot = {a: [...REST.a], l: [...REST.l], lean: 0, crouch: 0, shift: 0};
+function botJoints(t, dt){
+  if (G.kind === 'guc' && (G.guc.phase === 'set' || G.guc.phase === 'intro')) return gucBot(t);
+  let tg = REST;
+  const e = G.events.find(e => !e.done && (e.type === 'pose' || e.type === 'dodge') && e.t - t < .75);
+  if (e && !e.botSkip) {
+    if (e.type === 'pose') { const p = POSES[e.poseId]; tg = {a: p.a.map((v, i) => v + e.botErr[i]), l: p.l, lean: p.lean, crouch: p.crouch, shift: p.shift + e.lane * 1.2}; }
+    else tg = e.kind === 'duck' ? {...REST, l: SQUAT_LEGS, crouch: .3} : {...REST, shift: e.kind === 'L' ? -1 : 1};
+  }
+  const k = 1 - Math.exp(-dt * 11);
+  for (let i = 0; i < 4; i++) { bot.a[i] = lerp(bot.a[i], tg.a[i], k); bot.l[i] = lerp(bot.l[i], tg.l[i], k); }
+  bot.lean = lerp(bot.lean, tg.lean, k); bot.crouch = lerp(bot.crouch, tg.crouch, k); bot.shift = lerp(bot.shift, tg.shift, k);
+  const J = buildSkeleton(bot, G.body, 0);
+  const h = G.events.find(e => !e.done && (e.type === 'punch' || e.type === 'gem') && !e.botSkip && t > e.t - .16 && t < e.t + .2);
+  if (h) {
+    const pos = targetPos(h), s = pos.x < J.sc.x ? 'l' : 'r', f = clamp((t - (h.t - .16)) / .12);
+    const w = J[s + 'w']; w.x = lerp(w.x, pos.x, f); w.y = lerp(w.y, pos.y, f);
+    const el = J[s + 'e'], sh = J[s + 's']; el.x = (sh.x + w.x) / 2; el.y = (sh.y + w.y) / 2 + G.body.sw * .15;
+  }
+  return J;
+}
+
+/* ============================== game state ============================== */
+let VW = 480, VH = 640;                    // video space; landmarks and the body model live here
+let W = 0, H = 0, dpr = 1, view = {s: 1, ox: 0, oy: 0}, vp = {x: 0, y: 0};
+const canvas = $('stage'), mainCtx = canvas.getContext('2d');
+const layer = document.createElement('canvas'), layerCtx = layer.getContext('2d');
+let ctx = mainCtx;
+const PLAYER_ALPHA = .5;
+const G = {mode: 'menu', kind: 'dans', gucKg: 5, gucSets: 3, gucRest: 90, gucWarm: 75, level: LEVELS[0], diff: 'kolay', training: false, demo: false, events: [], body: null,
+           pops: [], shards: [], flash: 0, tex: new Map(), calib: null, lost: 0, back: 0, autoPaused: false};
+const hands = {l: null, r: null, sl: 0, sr: 0};
+
+function resize(){
+  dpr = Math.min(2, window.devicePixelRatio || 1); W = window.innerWidth; H = window.innerHeight;
+  canvas.width = layer.width = Math.round(W * dpr); canvas.height = layer.height = Math.round(H * dpr);
+  layout();
+}
+function layout(){
+  const s = Math.min(W / VW, H / VH); view = {s, ox: (W - VW * s) / 2, oy: (H - VH * s) / 2};
+  vp = {x: W / 2, y: view.oy + VH * s * .42}; G.tex.clear(); G.minis = new Map(); placeVP();
+}
+/* Walls grow out of a point above the player's head, so the body never hides what is coming. */
+function placeVP(){
+  const bar = !$('hEnergyBar').hidden ? $('hEnergyBar') : document.querySelector('.hud-top');
+  const r = bar.getBoundingClientRect(); G.queueTop = (r.bottom > 0 ? r.bottom : 90) + 12;
+  const w1 = Math.round(clamp(W * .19, 64, 120)), w2 = Math.round(w1 * .78), n = W < 600 ? 2 : 3;
+  G.card = {w1, w2, n, h1: Math.round(w1 * 1.3), gap: 8, width: w1 + (n - 1) * (w2 + 8)};
+  if (!G.body) return;
+  const b = G.body, headTop = Y(b.groundY - b.legLen - b.torso - b.headUp) - b.sw * view.s * .6;
+  const queueLeft = W - 16 - G.card.width, farHalf = W * (1 / (1 + DEPTH)) / 2 + 8;
+  const floor = W / 2 + farHalf < queueLeft ? G.queueTop + 24 : G.queueTop + G.card.h1 + 54;   // the queue only matters if it sits over the far walls
+  vp = {x: W / 2, y: clamp(headTop - Math.max(H * .1, 60), Math.min(floor, H * .3), H * .5)};
+}
+const X = x => view.ox + x * view.s, Y = y => view.oy + y * view.s;
+const standSC = () => ({x: G.body.cx, y: G.body.groundY - G.body.legLen - G.body.torso});
+function targetPos(e){ const s = standSC(), b = G.body; return e.type === 'punch' ? {x: s.x + e.side * 1.5 * b.sw, y: s.y - .1 * b.sw} : {x: s.x + e.x * b.sw, y: s.y + e.y * b.sw}; }
+
+function newRun(){
+  const d = DIFFS[G.diff], map = buildMap(G.level, G.diff), r = rng(G.level.seed + 1234);
+  G.map = map; G.spb = 60 / map.bpm; G.d = d;
+  G.events = map.events.map((e, i) => ({...e, t: e.beat * G.spb, done: false, best: 0, color: WALL_COLORS[i % WALL_COLORS.length],
+    botSkip: r() < .1, botErr: [0, 0, 0, 0].map(() => (r() - .5) * 64)}));
+  G.endT = map.beats * G.spb + 1.5;
+  Object.assign(G, {score: 0, combo: 0, maxCombo: 0, energy: 70, squats: 0, crouched: false, pops: [], shards: [], flash: 0, lost: 0, back: 0, autoPaused: false, ended: false,
+    counts: {perfect: 0, good: 0, miss: 0, dodge: 0, dodgeTotal: 0, punch: 0, punchTotal: 0, gem: 0, gemTotal: map.events.filter(e => e.type === 'gem').length}});
+  Object.assign(bot, {a: [...REST.a], l: [...REST.l], lean: 0, crouch: 0, shift: 0});
+  hands.l = hands.r = null; hands.sl = hands.sr = 0;
+  music.step = 0; G.hud = {};
+}
+function startPlay(){
+  if (G.kind === 'guc') newGucRun(); else newRun();
+  show('hud'); $('hDemo').hidden = !G.demo; $('hEnergyBar').hidden = G.kind === 'guc';
+  G.mode = 'play'; placeVP(); clock.start(); G.pops.push({text: 'HAZIR OL', color: C.cream, t0: performance.now(), big: true});
+  clearInterval(music.timer); music.timer = setInterval(scheduleMusic, 40); scheduleMusic(); wake(true);
+}
+const mult = () => MULTS[Math.min(3, Math.floor(G.combo / 5))];
+
+function success(e, kind, label, color){
+  G.combo++; G.maxCombo = Math.max(G.maxCombo, G.combo);
+  const pts = POINTS[kind] * mult(); G.score += pts; G.energy = Math.min(100, G.energy + G.d.gain);
+  G.pops.push({text: label, sub: '+' + fmt(pts), color, t0: performance.now()});
+  shatter(e.color || color); kind === 'punch' ? sfx.punch() : sfx.hit(kind === 'perfect');
+}
+function fail(){
+  G.combo = 0; G.counts.miss++; G.flash = 1; sfx.miss();
+  if (navigator.vibrate) { try { navigator.vibrate(70); } catch (e) {} }
+  G.pops.push({text: 'KAÇTI', color: C.coral, t0: performance.now()});
+  if (!G.training && G.kind !== 'guc') { G.energy = Math.max(0, G.energy - G.d.drain); if (G.energy <= 0) endRun(false); }
+}
+function shatter(color){
+  for (let i = 0; i < 30; i++) {
+    const x = Math.random() * W, y = Math.random() * H, a = Math.atan2(y - vp.y, x - vp.x) + (Math.random() - .5) * .6, sp = 300 + Math.random() * 700;
+    G.shards.push({x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: Math.random() * 6.28, vr: (Math.random() - .5) * 12, s: 14 + Math.random() * 34, life: 1, color});
+  }
+}
+
+function judge(t, J){
+  const b = G.body, m = J ? measure(J, b) : null;
+  if (m) { if (!G.crouched && m.depth > .2) { G.crouched = true; G.squats++; } else if (G.crouched && m.depth < .1) G.crouched = false; }
+  const near = (pos, r) => J && ['l', 'r'].find(s => J[s + 'w'].v >= .4 && dist(J[s + 'w'], pos) < r * b.sw);
+  for (const e of G.events) {
+    if (e.done) continue;
+    if (e.t - t > .35) break;
+    if (e.type === 'pose') {
+      if (t < e.t - .12) continue;
+      if (J) { const r = scorePose(POSES[e.poseId], e.lane, J, b, G.d.tol); if (r.total > e.best) e.best = r.total; }
+      if ((e.best >= PERFECT && t >= e.t - .04) || t > e.t + .18) {
+        e.done = true;
+        if (e.best >= PERFECT) { G.counts.perfect++; success(e, 'perfect', 'MÜKEMMEL', C.sun); }
+        else if (e.best >= GOOD) { G.counts.good++; success(e, 'good', 'İYİ', C.mint); }
+        else fail();
+      }
+    } else if (e.type === 'dodge') {
+      if (t < e.t - .12) continue;
+      const ok = m && (e.kind === 'L' ? m.off < -.72 : e.kind === 'R' ? m.off > .72 : m.depth >= .2);
+      if (ok) { e.done = true; G.counts.dodge++; G.counts.dodgeTotal++; success(e, 'dodge', 'KAÇTIN', C.sky); }
+      else if (t > e.t + .15) { e.done = true; G.counts.dodgeTotal++; fail(); }
+    } else if (e.type === 'punch') {
+      if (t < e.t - .28) continue;
+      const s = near(targetPos(e), .65);
+      if (s && hands['s' + s] >= 1.2) { e.done = true; G.counts.punch++; G.counts.punchTotal++; success(e, 'punch', 'TAM İSABET', C.sun); }
+      else if (t > e.t + .22) { e.done = true; G.counts.punchTotal++; fail(); }
+    } else if (e.type === 'gem') {
+      if (t < e.t - .3) continue;
+      if (near(targetPos(e), .6)) { e.done = true; G.counts.gem++; G.score += POINTS.gem * mult(); sfx.gem(); G.pops.push({text: '+' + POINTS.gem * mult(), color: C.mint, t0: performance.now(), at: targetPos(e)}); }
+      else if (t > e.t + .25) e.done = true;
+    }
+  }
+}
+
+function endRun(finished){
+  if (G.ended) return; G.ended = true; G.mode = 'results'; clearInterval(music.timer); wake(false); sfx.end(finished);
+  const c = G.counts, walls = c.perfect + c.good + c.miss + c.dodge + c.punch;
+  const acc = walls ? (c.perfect + .7 * c.good + c.dodge + c.punch) / walls : 0;
+  const stars = !finished ? 0 : acc >= .9 ? 3 : acc >= .7 ? 2 : acc >= .45 ? 1 : 0;
+  $('rTitle').textContent = finished ? 'Tur bitti' : 'Enerjin tükendi';
+  $('rStars').innerHTML = [0, 1, 2].map(i => `<span class="${i < stars ? 'on' : ''}">★</span>`).join('');
+  $('rStars').setAttribute('aria-label', stars + ' / 3 yıldız');
+  $('rScore').textContent = fmt(G.score); $('rAcc').textContent = '%' + Math.round(acc * 100);
+  $('rCombo').textContent = G.maxCombo; $('rSquat').textContent = G.squats;
+  $('rPerfect').textContent = c.perfect; $('rGood').textContent = c.good; $('rMiss').textContent = c.miss;
+  $('rDodge').textContent = c.dodge + '/' + c.dodgeTotal; $('rPunch').textContent = c.punch + '/' + c.punchTotal; $('rGem').textContent = c.gem + '/' + c.gemTotal;
+  let note = '';
+  if (G.demo) note = 'Demo turu. Hareketleri bot yaptı, puan kaydedilmedi.';
+  else { const best = store.get(), key = G.level.id + '|' + G.diff, old = best[key] || 0;
+    if (G.score > old) { best[key] = G.score; store.set(best); note = old ? 'Yeni rekor. Eskisi ' + fmt(old) + ' idi.' : 'İlk rekorun.'; } else note = 'Rekorun ' + fmt(old); }
+  $('rBest').textContent = note; $('againBtn').textContent = G.demo ? 'Demoyu tekrar izle' : 'Tekrar oyna';
+  if (actx && actx.state === 'suspended') actx.resume();
+  setTimeout(() => show('results'), 500);
+}
+
+/* ============================== calibration ============================== */
+const NEED = ['nose', 'ls', 'rs', 'le', 're', 'lw', 'rw', 'lh', 'rh', 'lk', 'rk', 'la', 'ra'];
+function calibrate(J, now){
+  const c = G.calib; let msg = '';
+  if (!J) msg = 'Seni göremiyorum. Kadraja gir.';
+  else if (!vis(J.la, J.ra, J.lk, J.rk)) msg = 'Ayakların görünmüyor. Biraz geri çekil.';
+  else if (!vis(J.nose, J.ls, J.rs)) msg = 'Başın görünmüyor. Geri çekil ya da telefonu yukarı çevir.';
+  else if (!vis(J.le, J.re, J.lw, J.rw, J.lh, J.rh)) msg = 'Kolların kadrajda değil.';
+  else if (segAngle(-1, J.ls, J.le) > 45 || segAngle(1, J.rs, J.re) > 45) msg = 'Kollarını iki yana indir.';
+  if (msg) { c.since = 0; c.n = 0; $('calibText').textContent = msg; return 0; }
+  const sw = dist(J.ls, J.rs);
+  if (!c.since || dist(J.hc, c.anchor) > sw * .15) { c.since = now; c.anchor = {...J.hc}; c.n = 0; c.sum = {}; }
+  const add = (k, v) => c.sum[k] = (c.sum[k] || 0) + v;
+  add('sw', sw); add('torso', dist(J.sc, J.hc)); add('hipW', dist(J.lh, J.rh)); add('cx', J.hc.x); add('hy', J.hc.y);
+  add('ua', (dist(J.ls, J.le) + dist(J.rs, J.re)) / 2); add('fa', (dist(J.le, J.lw) + dist(J.re, J.rw)) / 2);
+  add('th', (dist(J.lh, J.lk) + dist(J.rh, J.rk)) / 2); add('sh', (dist(J.lk, J.la) + dist(J.rk, J.ra)) / 2);
+  add('gy', (J.la.y + J.ra.y) / 2); add('headUp', dist(J.sc, J.nose)); c.n++;
+  const prog = clamp((now - c.since) / 2000);
+  $('calibText').textContent = 'Harika, kıpırdama';
+  if (prog >= 1) {
+    const a = k => c.sum[k] / c.n, s = a('sw'), fb = defaultBody(s, a('cx'), a('gy'));
+    const sane = (v, lo, hi, d) => (v >= lo * s && v <= hi * s) ? v : d;
+    G.body = {sw: s, torso: sane(a('torso'), .8, 2.2, fb.torso), hipW: sane(a('hipW'), .35, 1, fb.hipW), ua: sane(a('ua'), .5, 1.2, fb.ua), fa: sane(a('fa'), .45, 1.1, fb.fa),
+              th: sane(a('th'), .7, 1.7, fb.th), sh: sane(a('sh'), .7, 1.7, fb.sh), cx: a('cx'), groundY: a('gy'), legLen: Math.max(a('gy') - a('hy'), s), headUp: sane(a('headUp'), .4, 1.2, fb.headUp)};
+    G.tex.clear(); $('calib').hidden = true; startPlay();
+  }
+  return prog;
+}
+
+/* ============================== drawing ============================== */
+function tracePose(c, J, lw, headR, fx = X, fy = Y){
+  c.lineCap = 'round'; c.lineJoin = 'round'; c.lineWidth = lw;
+  c.beginPath();
+  for (const ch of [['ls', 'le', 'lw'], ['rs', 're', 'rw'], ['lh', 'lk', 'la'], ['rh', 'rk', 'ra']]) { c.moveTo(fx(J[ch[0]].x), fy(J[ch[0]].y)); c.lineTo(fx(J[ch[1]].x), fy(J[ch[1]].y)); c.lineTo(fx(J[ch[2]].x), fy(J[ch[2]].y)); }
+  c.stroke();
+  c.beginPath(); c.moveTo(fx(J.ls.x), fy(J.ls.y)); c.lineTo(fx(J.rs.x), fy(J.rs.y)); c.lineTo(fx(J.rh.x), fy(J.rh.y)); c.lineTo(fx(J.lh.x), fy(J.lh.y)); c.closePath(); c.fill(); c.stroke();
+  c.beginPath(); c.arc(fx(J.nose.x), fy(J.nose.y), headR, 0, 6.3); c.fill();
+}
+function panel(c, w, h, color){
+  c.fillStyle = color; c.fillRect(0, 0, w, h);
+  c.save(); c.beginPath(); c.rect(0, 0, w, h); c.clip(); c.strokeStyle = 'rgba(255,255,255,.1)'; c.lineWidth = Math.max(8, w * .035);
+  for (let x = -h; x < w; x += Math.max(26, w * .11)) { c.beginPath(); c.moveTo(x, h); c.lineTo(x + h, 0); c.stroke(); }
+  c.restore();
+  c.strokeStyle = C.night; c.lineWidth = Math.max(6, w * .03); c.strokeRect(0, 0, w, h);
+}
+function cutout(c, J, lw, headR, fx, fy){
+  c.strokeStyle = c.fillStyle = C.cream; tracePose(c, J, lw + Math.max(6, lw * .22), headR + Math.max(3, lw * .11), fx, fy);
+  c.globalCompositeOperation = 'destination-out'; c.strokeStyle = c.fillStyle = '#000'; tracePose(c, J, lw, headR, fx, fy);
+  c.globalCompositeOperation = 'source-over';
+}
+function poseTex(e){
+  const key = e.poseId + '|' + e.lane + '|' + e.color; let t = G.tex.get(key); if (t) return t;
+  const q = Math.min(1, 640 / Math.max(W, H)); t = document.createElement('canvas'); t.width = Math.ceil(W * q); t.height = Math.ceil(H * q);
+  const c = t.getContext('2d'); c.scale(q, q); panel(c, W, H, e.color);
+  const p = POSES[e.poseId], b = G.body, sw = b.sw * view.s;
+  cutout(c, buildSkeleton(p, b, e.lane), sw * .62, sw * .5, X, Y);
+  c.fillStyle = C.night; c.textAlign = 'center'; c.textBaseline = 'top';
+  const size = Math.min(W * .085, 44); c.font = `400 ${size}px ${FONT_D}`;
+  c.fillText(p.name.toLocaleUpperCase('tr-TR'), W / 2, Math.max(26, Y(b.groundY - b.legLen - b.torso - 3.2 * b.sw) - size), W - 24);
+  G.tex.set(key, t); return t;
+}
+function wallXform(sc){ ctx.setTransform(dpr * sc, 0, 0, dpr * sc, dpr * vp.x * (1 - sc), dpr * vp.y * (1 - sc)); }
+const flat = () => ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+function drawBackdrop(t){
+  flat(); ctx.clearRect(0, 0, W, H);
+  if (G.demo || G.mode === 'menu') { const g = ctx.createRadialGradient(vp.x, vp.y, 10, vp.x, vp.y, Math.max(W, H) * .8); g.addColorStop(0, C.night3); g.addColorStop(1, C.night); ctx.fillStyle = g; }
+  else ctx.fillStyle = 'rgba(22,15,51,.55)';
+  ctx.fillRect(0, 0, W, H);
+  const beatPh = G.spb ? ((t / G.spb) % 1 + 1) % 1 : 0;
+  ctx.strokeStyle = C.cream; ctx.lineWidth = 2;
+  for (let i = 0; i < 5; i++) {
+    const z = 1 - ((t * .35 + i / 5) % 1 + 1) % 1, sc = 1 / (1 + DEPTH * z);
+    ctx.globalAlpha = .05 + .12 * sc * (1 - beatPh * .5);
+    ctx.strokeRect(vp.x - vp.x * sc, vp.y - vp.y * sc, W * sc, H * sc);
+  }
+  ctx.globalAlpha = .08; ctx.beginPath();
+  for (const [x, y] of [[0, 0], [W, 0], [0, H], [W, H]]) { ctx.moveTo(vp.x, vp.y); ctx.lineTo(x, y); }
+  ctx.stroke(); ctx.globalAlpha = 1;
+}
+
+function drawWalls(t){
+  const b = G.body, d = G.d, sw = b.sw * view.s;
+  for (let i = G.events.length - 1; i >= 0; i--) {
+    const e = G.events[i]; if (e.done) continue;
+    const z = (e.t - t) / d.travel; if (z > 1) continue;
+    const zc = Math.max(z, -.14), sc = 1 / (1 + DEPTH * zc), u = 1 - z;
+    const alpha = clamp(u / .12) * (z < 0 ? clamp(1 + z / .08) : 1);
+    if (alpha <= 0) continue;
+    if (e.type === 'pose') {
+      wallXform(sc); ctx.globalAlpha = alpha * .93; ctx.drawImage(poseTex(e), 0, 0, W, H);
+    } else if (e.type === 'dodge') {
+      wallXform(sc); ctx.globalAlpha = alpha * .93;
+      const cx = X(b.cx); let x0, y0, w, h, label, ax, ay;
+      if (e.kind === 'duck') { x0 = 0; y0 = 0; w = W; h = Y(b.groundY - b.legLen - b.torso - b.headUp - .4 * b.sw + .2 * b.legLen); label = 'ÇÖMEL'; }
+      else if (e.kind === 'L') { x0 = cx - .2 * sw; y0 = 0; w = W - x0; h = H; label = 'SOLA'; }
+      else { x0 = 0; y0 = 0; w = cx + .2 * sw; h = H; label = 'SAĞA'; }
+      ctx.save(); ctx.translate(x0, y0); panel(ctx, w, h, C.sky); ctx.restore();
+      ctx.fillStyle = C.night; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const size = Math.min(54, Math.max(22, Math.min(w, h) * .2)); ctx.font = `400 ${size}px ${FONT_D}`;
+      ax = x0 + w / 2; ay = e.kind === 'duck' ? Math.max(size, h - size) : Y(b.groundY - b.legLen - b.torso);
+      ctx.fillText(label, ax, ay, w - 16);
+      const arrow = e.kind === 'duck' ? '▼' : e.kind === 'L' ? '◀' : '▶';
+      ctx.fillText(arrow, ax, ay + (e.kind === 'duck' ? -size * 1.1 : size * 1.2));
+    } else {
+      flat(); if (u < .45) continue;
+      const pos = targetPos(e), x = X(pos.x), y = Y(pos.y), grow = clamp((u - .45) / .55), a = alpha * clamp(grow * 3);
+      if (e.type === 'punch') {
+        const r = .5 * sw; ctx.globalAlpha = a;
+        ctx.strokeStyle = C.cream; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(x, y, r * (1 + 2.2 * Math.max(0, z / .55)), 0, 6.3); ctx.stroke();
+        ctx.fillStyle = C.sun; ctx.beginPath(); ctx.arc(x, y, r * (.5 + .5 * grow), 0, 6.3); ctx.fill();
+        ctx.strokeStyle = C.night; ctx.lineWidth = 4; ctx.stroke();
+        ctx.fillStyle = C.night; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `400 ${Math.max(13, r * .55)}px ${FONT_D}`; ctx.fillText('VUR', x, y + 1);
+      } else {
+        const r = .3 * sw * (.5 + .5 * grow); ctx.globalAlpha = a; ctx.fillStyle = C.mint; ctx.strokeStyle = C.night; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(x, y - r * 1.25); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r * 1.25); ctx.lineTo(x - r, y); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.globalAlpha = a * .6; ctx.fillStyle = C.cream; ctx.beginPath(); ctx.moveTo(x, y - r * 1.25); ctx.lineTo(x + r, y); ctx.lineTo(x, y); ctx.closePath(); ctx.fill();
+      }
+    }
+  }
+  flat(); ctx.globalAlpha = 1;
+}
+
+const SEGS = [['uaL', 'ls', 'le'], ['faL', 'le', 'lw'], ['uaR', 'rs', 're'], ['faR', 're', 'rw'], ['thL', 'lh', 'lk'], ['shL', 'lk', 'la'], ['thR', 'rh', 'rk'], ['shR', 'rk', 'ra'], ['torso', 'sc', 'hc'], ['', 'ls', 'rs'], ['', 'lh', 'rh']];
+function drawSkeleton(J, parts){
+  if (!J) return;
+  const sw = dist(J.ls, J.rs) * view.s, lw = clamp(sw * .13, 5, 16);
+  const colorOf = key => { let v = parts ? parts[key] : undefined; if (v === undefined && parts && parts.legs !== undefined && /^(th|sh)/.test(key)) v = parts.legs; return v === undefined ? C.cream : v >= GOOD ? C.mint : C.coral; };
+  ctx.lineCap = 'round';
+  for (const pass of [0, 1]) for (const [key, a, b] of SEGS) {
+    const A = J[a], B = J[b]; if (!vis(A, B)) continue;
+    ctx.strokeStyle = pass ? colorOf(key) : C.night; ctx.globalAlpha = pass ? 1 : .75; ctx.lineWidth = pass ? lw : lw + 7;
+    ctx.beginPath(); ctx.moveTo(X(A.x), Y(A.y)); ctx.lineTo(X(B.x), Y(B.y)); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  if (J.nose.v >= .5) { ctx.lineWidth = lw; ctx.strokeStyle = C.night; ctx.fillStyle = C.cream; ctx.beginPath(); ctx.arc(X(J.nose.x), Y(J.nose.y), sw * .34, 0, 6.3); ctx.fill(); ctx.stroke(); }
+  for (const k of ['lw', 'rw']) if (J[k].v >= .5) { ctx.fillStyle = C.sun; ctx.strokeStyle = C.night; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(X(J[k].x), Y(J[k].y), lw * .95, 0, 6.3); ctx.fill(); ctx.stroke(); }
+}
+
+function miniCard(e){
+  const key = e.type === 'pose' ? e.poseId + e.color : e.type + (e.kind || e.side), w = G.card.w1, h = G.card.h1;
+  let c = G.minis.get(key); if (c) return c;
+  c = document.createElement('canvas'); c.width = w * dpr; c.height = h * dpr; const x = c.getContext('2d'); x.scale(dpr, dpr);
+  if (e.type === 'pose') { panel(x, w, h, e.color); const sw = w * .2; cutout(x, buildSkeleton(POSES[e.poseId], defaultBody(sw, w / 2, h - h * .07), 0), sw * .6, sw * .48, v => v, v => v); }
+  else {
+    panel(x, w, h, e.type === 'dodge' ? C.sky : C.night2);
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    if (e.type === 'punch') { x.fillStyle = C.sun; x.beginPath(); x.arc(w / 2, h / 2, w * .3, 0, 6.3); x.fill(); x.fillStyle = C.night; x.font = `400 ${w * .22}px ${FONT_D}`; x.fillText('VUR', w / 2, h / 2 + 1); }
+    else { x.fillStyle = C.night; x.font = `400 ${w * .5}px ${FONT_D}`; x.fillText(e.kind === 'duck' ? '▼' : e.kind === 'L' ? '◀' : '▶', w / 2, h / 2); }
+  }
+  G.minis.set(key, c); return c;
+}
+function drawQueue(t){
+  const k = G.card, next = []; for (const e of G.events) { if (!e.done && e.type !== 'gem' && e.t > t - .2) next.push(e); if (next.length === k.n) break; }
+  if (!next.length) return;
+  const x0 = W - 16 - k.width, y = G.queueTop + 18;
+  ctx.fillStyle = C.cream; ctx.globalAlpha = .9; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.font = `800 12px ${getComputedStyle(document.body).fontFamily}`; ctx.fillText('SIRADAKİ', x0, y - 6);
+  let x = x0;
+  next.forEach((e, i) => {
+    const w = i === 0 ? k.w1 : k.w2, h = Math.round(w * 1.3);
+    ctx.globalAlpha = i === 0 ? 1 : .8; ctx.drawImage(miniCard(e), x, y, w, h);
+    if (i === 0) { ctx.globalAlpha = 1; ctx.strokeStyle = C.sun; ctx.lineWidth = 4; ctx.strokeRect(x - 2, y - 2, w + 4, h + 4); }
+    x += w + k.gap;
+  });
+  ctx.globalAlpha = 1;
+}
+function drawFx(now, dt){
+  for (const s of G.shards) {
+    s.x += s.vx * dt; s.y += s.vy * dt; s.r += s.vr * dt; s.life -= dt * 1.6;
+    if (s.life <= 0) continue;
+    ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.r); ctx.globalAlpha = clamp(s.life); ctx.fillStyle = s.color; ctx.fillRect(-s.s / 2, -s.s / 2, s.s, s.s * .7); ctx.restore();
+  }
+  G.shards = G.shards.filter(s => s.life > 0); ctx.globalAlpha = 1;
+  if (G.flash > 0) { ctx.fillStyle = C.coral; ctx.globalAlpha = G.flash * .35; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; G.flash -= dt * 3.5; }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const p of G.pops) {
+    const k = (now - p.t0) / (p.big ? 1400 : 750); if (k >= 1) { p.dead = true; continue; }
+    const a = clamp((1 - k) * 2.5), sc = .6 + .4 * clamp(k * 7);
+    if (p.at) { ctx.globalAlpha = a; ctx.font = `400 ${Math.min(34, W * .07)}px ${FONT_D}`; ctx.lineWidth = 6; ctx.strokeStyle = C.night; const x = X(p.at.x), y = Y(p.at.y) - k * 50; ctx.strokeText(p.text, x, y); ctx.fillStyle = p.color; ctx.fillText(p.text, x, y); continue; }
+    const size = Math.min(W * .13, H * .09, 72) * sc, y = Math.min(H - size * 1.3, Y(G.body.groundY) + size * .5) - k * 26;
+    ctx.globalAlpha = a; ctx.font = `400 ${size}px ${FONT_D}`; ctx.lineJoin = 'round'; ctx.lineWidth = size * .22; ctx.strokeStyle = C.night;
+    ctx.strokeText(p.text, W / 2, y, W - 20); ctx.fillStyle = p.color; ctx.fillText(p.text, W / 2, y, W - 20);
+    if (p.sub) { ctx.font = `400 ${size * .42}px ${FONT_D}`; ctx.lineWidth = size * .12; ctx.strokeText(p.sub, W / 2, y + size * .78); ctx.fillStyle = C.cream; ctx.fillText(p.sub, W / 2, y + size * .78); }
+  }
+  G.pops = G.pops.filter(p => !p.dead); ctx.globalAlpha = 1;
+}
+
+function drawCalib(J, prog){
+  flat(); ctx.clearRect(0, 0, W, H); ctx.fillStyle = 'rgba(22,15,51,.4)'; ctx.fillRect(0, 0, W, H);
+  const g = defaultBody(VH * .15, VW / 2, VH * .94), sw = g.sw * view.s;
+  ctx.setLineDash([10, 9]); ctx.strokeStyle = prog > 0 ? C.mint : C.cream; ctx.fillStyle = 'rgba(255,245,228,.06)'; ctx.globalAlpha = .9;
+  const o = buildSkeleton(REST, g, 0), w = sw * .5;
+  ctx.lineWidth = 3; ctx.strokeRect(X(g.cx) - sw * 1.6, Y(g.groundY) - sw * 5.1, sw * 3.2, sw * 5.25);
+  ctx.setLineDash([]); ctx.globalAlpha = .16; ctx.strokeStyle = ctx.fillStyle = C.cream; tracePose(ctx, o, w, sw * .42);
+  ctx.globalAlpha = 1; drawSkeleton(J, null);
+  if (prog > 0) { const x = W / 2, y = view.oy + VH * view.s * .14, r = Math.min(W * .11, 46);
+    ctx.lineWidth = 10; ctx.strokeStyle = C.night; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.3); ctx.stroke();
+    ctx.strokeStyle = C.sun; ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + prog * 6.283); ctx.stroke(); }
+}
+
+function updateHud(t){
+  const h = G.hud, set = (k, v, fn) => { if (h[k] !== v) { h[k] = v; fn(v); } };
+  set('score', Math.round(G.score), v => $('hScore').textContent = fmt(v));
+  set('mult', mult(), v => $('hMult').textContent = 'x' + v);
+  set('combo', G.combo, v => $('hStreak').textContent = v >= 2 ? v + ' SERİ' : '');
+  set('energy', G.training || G.kind === 'guc' ? -1 : Math.round(G.energy), v => { $('hEnergyBar').hidden = v < 0; $('hEnergy').style.width = Math.max(0, v) + '%'; $('hEnergyBar').classList.toggle('low', v >= 0 && v < 30); });
+  $('hProg').style.width = (clamp(G.kind === 'guc' ? G.guc.doneSets / G.guc.queue.length : t / G.endT) * 100).toFixed(1) + '%';
+}
+
+/* ============================== main loop ============================== */
+let lastNow = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt = Math.min(.1, (now - lastNow) / 1000); lastNow = now;
+  if (!G.demo && (G.mode === 'calib' || G.mode === 'play' || G.mode === 'paused')) track(now);
+  if (G.mode === 'calib') { drawCalib(tracker.J, calibrate(tracker.J, now)); return; }
+  if (G.mode === 'menu') { flat(); ctx.clearRect(0, 0, W, H); return; }
+  if (!G.body) return;
+  const t = G.mode === 'play' ? clock.song() : G.lastT || 0; G.lastT = t;
+  const J = G.demo ? (G.mode === 'play' ? (G.lastJ = botJoints(t, dt)) : G.lastJ) : tracker.J;
+
+  if (J && G.mode === 'play') for (const s of ['l', 'r']) {           // wrist speed in shoulder widths per second
+    const w = J[s + 'w'], prev = hands[s];
+    if (prev && dt > 0) hands['s' + s] = Math.max(hands['s' + s] * .6, dist(w, prev) / G.body.sw / dt);
+    hands[s] = {x: w.x, y: w.y};
+  }
+  if (!G.demo) {                                                       // auto-pause when the body leaves the frame
+    const guc = G.kind === 'guc', lifting = guc && (G.guc.phase === 'set' || G.guc.phase === 'intro');
+    const inFrame = J && (guc ? vis(J.ls, J.rs) : vis(J.ls, J.rs, J.lh, J.rh));       // bent-over moves can hide the hips
+    if (G.mode === 'play') { G.lost = inFrame || (guc && !lifting) ? 0 : G.lost + dt; if (G.lost > 1.2) pause(true); }
+    else if (G.mode === 'paused' && G.autoPaused) { G.back = inFrame ? G.back + dt : 0; if (G.back > .8) resume(); }
+  }
+  if (G.mode === 'play') { judge(t, J); if (G.kind === 'guc') gucUpdate(t, J); if (G.mode === 'play' && t > G.endT) endRun(true); }
+
+  let parts = null;
+  const next = G.events.find(e => !e.done && e.type === 'pose');
+  if (J && next && next.t - t < 1.3) parts = scorePose(POSES[next.poseId], next.lane, J, G.body, G.d.tol).parts;
+  drawBackdrop(t); drawWalls(t);
+  const guc = G.kind === 'guc';
+  if (guc) { drawGhost(t); const gp = gucParts(t); if (gp) parts = gp; }
+  ctx = layerCtx; flat(); ctx.clearRect(0, 0, W, H); drawSkeleton(J, parts); ctx = mainCtx;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = PLAYER_ALPHA; ctx.drawImage(layer, 0, 0); ctx.globalAlpha = 1; flat();
+  drawQueue(t); if (guc) drawGucHud(t); drawFx(now, dt);
+  if (G.mode === 'play') updateHud(t);
+}
+
+
+/* ============================== GÜÇ MODU (dambıl) ==============================
+   A session: warm-up walls -> for every move and set: intro (ghost demonstrates the tempo) -> set -> rest with light walls.
+   The ghost silhouette moves at the target tempo; reps are counted from the player's own range of motion.             */
+const GUC_BPM = 100, REP_CAP = 25;
+// tempo in beats: [up, hold at top, down, pause at bottom]; 6 beats = 3.6 s per rep at 100 BPM
+const MOVES = {
+  press:   {name: 'Omuz pres',     muscles: ['Omuz', 'Triceps (ikincil)'], tempo: [2, 0, 3, 1], shrug: .55, cue: 'Dambıllar omuz hizasında başlar, baş üstüne itilir.'},
+  lateral: {name: 'Yana kaldırma', muscles: ['Omuz'],                      tempo: [2, 1, 3, 0], shrug: .7,  cue: 'Kollar hafif bükük. Omuz hizasında dur, yukarı çıkma.'},
+  curl:    {name: 'Curl',          muscles: ['Biceps'],                    tempo: [2, 0, 3, 1], shrug: .7,  cue: 'Dirsekler gövdenin yanında sabit, gövde sallanmaz.'},
+  rearT:   {name: 'Eğik T',        muscles: ['Arka omuz', 'Üst sırt'],     tempo: [2, 1, 3, 0],             cue: 'Kalçadan öne eğil, sırt düz. Kolları yana aç.'},
+};
+const MOVE_ORDER = ['press', 'lateral', 'curl', 'rearT'];
+const FLAG_TEXT = {shrug: 'OMUZLARI İNDİR', over: 'OMUZ HİZASINDA DUR', drift: 'DİRSEKLER YANDA', sway: 'SALLANMA', notBent: 'ÖNE EĞİL'};
+const smooth = x => x * x * (3 - 2 * x);
+const gucStore = {
+  get(){ try { const o = JSON.parse(localStorage.getItem('duvardans.guc') || '{}'); return {sessions: Array.isArray(o.sessions) ? o.sessions : []}; } catch (e) { return {sessions: []}; } },
+  set(o){ try { localStorage.setItem('duvardans.guc', JSON.stringify(o)); } catch (e) {} },
+};
+function loadSettings(){
+  try { const o = JSON.parse(localStorage.getItem('duvardans.settings') || '{}');
+    if (o.kind === 'guc' || o.kind === 'dans') G.kind = o.kind;
+    if (o.kg > 0) G.gucKg = o.kg; if ([1, 2, 3].includes(o.sets)) G.gucSets = o.sets; if ([60, 90, 120].includes(o.rest)) G.gucRest = o.rest;
+  } catch (e) {}
+  $('kind-' + G.kind).checked = true; $('gucKg').value = G.gucKg; $('gsets-' + G.gucSets).checked = true; $('grest-' + G.gucRest).checked = true;
+}
+function saveSettings(){ try { localStorage.setItem('duvardans.settings', JSON.stringify({kind: G.kind, kg: G.gucKg, sets: G.gucSets, rest: G.gucRest})); } catch (e) {} }
+const periodSec = id => MOVES[id].tempo.reduce((a, b) => a + b, 0) * G.spb;
+
+/* Skeleton of a move at phase p (0 = start, 1 = top). Used for the ghost guide and the demo bot. */
+function moveSkeleton(id, p, b){
+  const L = (a, c) => a + (c - a) * p;
+  let pose;
+  if (id === 'press')        pose = {...REST, a: [L(88, 166), L(178, 176), L(88, 166), L(178, 176)]};
+  else if (id === 'lateral') pose = {...REST, a: [L(12, 86), L(14, 92), L(12, 86), L(14, 92)]};
+  else if (id === 'curl')    pose = {...REST, a: [8, 4, 8, 4]};
+  else                       pose = {...REST, a: [L(4, 80), L(2, 88), L(4, 80), L(2, 88)], hinge: 50};
+  const J = buildSkeleton(pose, b, 0);
+  if (id === 'curl') {                                     // the forearm swings toward the camera: on screen the wrist simply rises
+    const th = p * 145 * RAD;
+    for (const [k, side] of [['l', -1], ['r', 1]]) { const e = J[k + 'e']; J[k + 'w'] = pt(e.x - side * .15 * b.fa * Math.sin(th), e.y + b.fa * Math.cos(th)); }
+  }
+  return J;
+}
+
+/* The player's phase in the current move, plus form flags. */
+function measureMove(id, J, b){
+  const arms = [['l', -1], ['r', 1]].filter(([k]) => vis(J[k + 's'], J[k + 'e'], J[k + 'w']));
+  if (!arms.length || (id === 'rearT' && arms.length < 2)) return null;
+  const m = measure(J, b), f = {};
+  const avg = fn => arms.reduce((s, [k, side]) => s + fn(k, side), 0) / arms.length;
+  const upper = () => avg((k, side) => segAngle(side, J[k + 's'], J[k + 'e']));
+  let p;
+  if (id === 'press') p = (upper() - 85) / 75;
+  else if (id === 'lateral') { const ua = upper(); p = (ua - 15) / 67; if (ua > 105) f.over = 1; }
+  else if (id === 'curl') {
+    p = (avg(k => (J[k + 'e'].y - J[k + 'w'].y) / b.fa) + 1) / 1.75;
+    if (avg((k, side) => Math.abs(segAngle(side, J[k + 's'], J[k + 'e']))) > 35) f.drift = 1;
+    if (Math.abs(m.lean) > 10) f.sway = 1;
+  } else {
+    p = (Math.abs(J.lw.x - J.rw.x) - b.sw) / (1.8 * (b.ua + b.fa));
+    if ((m.sc.y - (b.groundY - b.legLen - b.torso)) / b.torso < .15) f.notBent = 1;
+  }
+  if (MOVES[id].shrug && J.nose.v >= .5 && (m.sc.y - J.nose.y) / b.headUp < MOVES[id].shrug) f.shrug = 1;
+  return {p: clamp(p, -.2, 1.2), f};
+}
+
+function targetP(g, t, origin = g.setStart){
+  const T = MOVES[g.queue[g.idx].move].tempo, per = T[0] + T[1] + T[2] + T[3];
+  let c = (t - origin) / G.spb; if (c < 0) return 0; c %= per;
+  if (c < T[0]) return smooth(c / T[0]); c -= T[0];
+  if (c < T[1]) return 1; c -= T[1];
+  if (c < T[2]) return 1 - smooth(c / T[2]);
+  return 0;
+}
+
+function gucEvent(e){ return {...e, done: false, best: 0, lane: 0, color: WALL_COLORS[Math.floor(Math.random() * WALL_COLORS.length)], botSkip: false, botErr: [0, 0, 0, 0].map(() => (Math.random() - .5) * 30)}; }
+/* Very light walls: side steps and easy arm poses, one every 4 beats. No squats, no punches. */
+function lightWalls(from, to, pool){
+  const out = []; let last = '';
+  for (let b = Math.ceil(from / G.spb / 4) * 4; b * G.spb <= to; b += 4) {
+    const r = Math.random(), t = b * G.spb;
+    if (r < .3) { out.push(gucEvent({type: 'dodge', kind: r < .15 ? 'L' : 'R', t})); last = ''; continue; }
+    let id; do { id = pool[Math.floor(Math.random() * pool.length)]; } while (id === last && pool.length > 1);
+    last = id; out.push(gucEvent({type: 'pose', poseId: id, t}));
+  }
+  return out;
+}
+
+function newGucRun(){
+  newRun();                                                   // shared resets: score, combo, effects
+  G.map = {bpm: GUC_BPM, beats: 1e6, events: []}; G.spb = 60 / GUC_BPM; G.d = DIFFS.kolay; G.endT = Infinity;
+  const queue = [];
+  for (const move of MOVE_ORDER) for (let set = 0; set < G.gucSets; set++) queue.push({move, set});
+  const same = gucStore.get().sessions.filter(x => x.kg === G.gucKg);
+  G.guc = {phase: 'warm', phaseEnd: G.gucWarm, queue, idx: 0, doneSets: 0, log: {}, last: same[same.length - 1] || null, rep: null, pickCue: false, live: null};
+  G.events = lightWalls(4, G.gucWarm - 3, ['t', 'y', 'up', 'cactus', 'hips', 'leftUp', 'rightUp']);
+}
+const newRep = t => ({state: 'down', peak: -1, err: 0, n: 0, flags: {}, t0: t});
+function gucSection(){ const ph = G.guc ? G.guc.phase : 'warm'; return ph === 'set' ? 2 : ph === 'rest' || ph === 'done' ? 3 : 1; }
+
+function startIntro(t){
+  const g = G.guc, it = g.queue[g.idx], per = MOVES[it.move].tempo.reduce((a, b) => a + b, 0);
+  g.phase = 'intro'; g.introStart = Math.ceil(t / G.spb) * G.spb;
+  g.setStart = g.introStart + (it.set === 0 ? per * 2 : per) * G.spb;      // first set of a move: two demo reps
+  g.lastCount = -1; g.botFail = G.testBotFail || 8 + Math.floor(Math.random() * 6);
+  const prev = g.last && g.last.sets && g.last.sets[it.move] ? g.last.sets[it.move][it.set] : null;
+  g.prev = prev == null ? null : prev; g.target = prev == null ? null : Math.min(REP_CAP, prev + 1);
+  G.pops.push({text: MOVES[it.move].name.toLocaleUpperCase('tr-TR'), sub: 'SET ' + (it.set + 1) + '/' + G.gucSets, color: C.sun, t0: performance.now(), big: true});
+}
+function finishRep(t){
+  const g = G.guc, r = g.rep, err = r.n ? r.err / r.n : 1, flag = Object.keys(r.flags)[0];
+  if (r.peak >= .85) {
+    g.reps++; g.lastFull = t; g.partialStreak = 0;
+    const perfect = !flag && err < .22; if (perfect) g.perfect++;
+    G.combo++; G.maxCombo = Math.max(G.maxCombo, G.combo);
+    const pts = (perfect ? 100 : 50) * mult(); G.score += pts;
+    G.pops.push({text: flag ? FLAG_TEXT[flag] : perfect ? 'MÜKEMMEL' : 'İYİ', sub: g.reps + '. TEKRAR · +' + fmt(pts), color: flag ? C.coral : perfect ? C.sun : C.mint, t0: performance.now()});
+    sfx.hit(perfect);
+  } else {
+    g.partials++; g.partialStreak++; G.combo = 0;
+    G.pops.push({text: 'YARIM', sub: flag ? FLAG_TEXT[flag] : 'TAM AÇ', color: C.coral, t0: performance.now()}); sfx.miss();
+  }
+  g.rep = newRep(t);
+}
+function endSet(t, reason){
+  const g = G.guc, it = g.queue[g.idx];
+  (g.log[it.move] = g.log[it.move] || []).push({reps: g.reps, perfect: g.perfect, partial: g.partials});
+  g.doneSets++; g.idx++; g.live = null;
+  G.pops.push({text: 'SET BİTTİ', sub: g.reps + ' TEKRAR' + (reason === 'cap' ? ' · HAFİF GELDİ' : ' · DAMBILLARI BIRAK'), color: C.cream, t0: performance.now(), big: true});
+  sfx.end(true);
+  if (g.idx >= g.queue.length) { g.phase = 'done'; g.phaseEnd = t + 1.6; return; }
+  g.phase = 'rest'; g.phaseEnd = t + G.gucRest; g.pickCue = false;
+  G.events = G.events.filter(e => !e.done).concat(lightWalls(t + 7, t + G.gucRest - 9, ['hips', 'leanL', 'leanR', 'up', 't']));
+}
+function gucUpdate(t, J){
+  const g = G.guc;
+  if (g.phase === 'done') { if (t >= g.phaseEnd) endGuc(); return; }
+  if (g.phase === 'warm' || g.phase === 'rest') {
+    if (!g.pickCue && t > g.phaseEnd - 8) { g.pickCue = true; G.pops.push({text: 'DAMBILLARI AL', color: C.sun, t0: performance.now(), big: true}); }
+    if (t >= g.phaseEnd) startIntro(t);
+    return;
+  }
+  if (g.phase === 'intro') {
+    const left = Math.ceil((g.setStart - t) / G.spb);
+    if (left >= 1 && left <= 3 && left !== g.lastCount) { g.lastCount = left; G.pops.push({text: String(left), color: C.cream, t0: performance.now()}); }
+    if (t >= g.setStart) {
+      Object.assign(g, {phase: 'set', lastFull: t + 2, rep: newRep(t), reps: 0, partials: 0, partialStreak: 0, perfect: 0, cheered: false});
+      G.pops.push({text: 'BAŞLA', color: C.mint, t0: performance.now()});
+    }
+    return;
+  }
+  const id = g.queue[g.idx].move, per = periodSec(id), mm = J ? measureMove(id, J, G.body) : null, r = g.rep;
+  g.live = mm;
+  if (mm) {
+    r.err += Math.abs(clamp(mm.p) - targetP(g, t)); r.n++;
+    for (const k in mm.f) r.flags[k] = 1;
+    r.peak = Math.max(r.peak, mm.p);
+    if (r.state === 'down' && mm.p > .5) r.state = 'up';
+    else if (r.state === 'up' && mm.p < .18) finishRep(t);
+    if (!g.cheered && g.reps >= 3 && r.state === 'up' && t - r.t0 > per * 1.6) { g.cheered = true; G.pops.push({text: 'DAYAN', color: C.sun, t0: performance.now()}); }
+  }
+  // the set ends at the rep cap, after two half reps in a row, or when no full rep arrives for two tempo cycles (near failure)
+  if (g.reps >= REP_CAP) endSet(t, 'cap');
+  else if (g.partialStreak >= 2 || t - g.lastFull > per * 2 + 1) endSet(t, 'fail');
+}
+
+function gucBot(t){
+  const g = G.guc, id = g.queue[g.idx].move;
+  let p = 0;
+  if (g.phase === 'set') { const k = Math.floor((t - g.setStart) / periodSec(id)); p = targetP(g, t - .15) * (k < g.botFail ? 1 : k === g.botFail ? .72 : .4); }
+  return moveSkeleton(id, p, G.body);
+}
+function gucParts(t){
+  const g = G.guc; if (g.phase !== 'set' || !g.live) return null;
+  const v = Math.abs(clamp(g.live.p) - targetP(g, t)) < .2 ? 1 : 0;
+  return {uaL: v, faL: v, uaR: v, faR: v};
+}
+
+/* Ghost guide: a sun-coloured outline moving at the target tempo, drawn on its own layer so overlaps stay even. */
+function drawGhost(t){
+  const g = G.guc; if (g.phase !== 'intro' && g.phase !== 'set') return;
+  const id = g.queue[g.idx].move, tp = g.phase === 'set' ? targetP(g, t) : targetP(g, t, g.introStart);
+  const J = moveSkeleton(id, tp, G.body), sw = G.body.sw * view.s;
+  ctx = layerCtx; flat(); ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = ctx.fillStyle = C.sun; tracePose(ctx, J, sw * .58, sw * .46);
+  ctx.globalCompositeOperation = 'destination-out'; ctx.globalAlpha = .8; ctx.strokeStyle = ctx.fillStyle = '#000';
+  tracePose(ctx, J, sw * .58 - 9, sw * .46 - 4.5);
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  ctx = mainCtx; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(layer, 0, 0); flat();
+}
+
+function drawGucHud(t){
+  const g = G.guc, x = 16, y = G.queueTop + 6, bodyFont = getComputedStyle(document.body).fontFamily;
+  const text = (s, px, yy, font, color, align = 'left', maxW = W * .62) => { ctx.font = font; ctx.fillStyle = color; ctx.textAlign = align; ctx.lineWidth = 5; ctx.strokeStyle = C.night; ctx.lineJoin = 'round'; ctx.strokeText(s, px, yy, maxW); ctx.fillText(s, px, yy, maxW); };
+  ctx.textBaseline = 'alphabetic';
+  if (g.phase === 'intro' || g.phase === 'set') {
+    const it = g.queue[g.idx], m = MOVES[it.move];
+    text(m.name.toLocaleUpperCase('tr-TR'), x, y + 24, `400 ${Math.min(26, W * .062)}px ${FONT_D}`, C.cream);
+    text('SET ' + (it.set + 1) + '/' + G.gucSets + (g.target ? ' · HEDEF ' + g.target + ' (GEÇEN: ' + g.prev + ')' : ' · İLK KAYIT'), x, y + 46, `800 13px ${bodyFont}`, C.sun);
+    if (g.phase === 'intro') text(m.cue, x, y + 68, `600 15px ${bodyFont}`, C.cream, 'left', W - 32);
+    else {
+      text(String(g.reps), W - 16, y + 52, `400 ${Math.min(64, W * .15)}px ${FONT_D}`, C.sun, 'right', W * .3);
+      text('TEKRAR', W - 16, y + 70, `800 12px ${bodyFont}`, C.cream, 'right', W * .3);
+    }
+    // range meter: sun tick = where the guide is, mint dot = where you are
+    const mx = W - 26, top = H * .36, bot = H * .7, py = p => bot - clamp(p) * (bot - top);
+    ctx.globalAlpha = .85; ctx.fillStyle = C.night; ctx.fillRect(mx - 7, top - 6, 14, bot - top + 12);
+    ctx.fillStyle = C.mint; ctx.globalAlpha = .3; ctx.fillRect(mx - 7, top - 6, 14, py(.85) - top + 6); ctx.globalAlpha = 1;
+    const tp = g.phase === 'set' ? targetP(g, t) : targetP(g, t, g.introStart);
+    ctx.fillStyle = C.sun; ctx.fillRect(mx - 13, py(tp) - 3, 26, 6);
+    if (g.phase === 'set' && g.live) { ctx.fillStyle = C.mint; ctx.strokeStyle = C.night; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(mx, py(g.live.p), 9, 0, 6.3); ctx.fill(); ctx.stroke(); }
+  } else if (g.phase === 'warm' || g.phase === 'rest') {
+    const nx = g.queue[g.idx];
+    text(g.phase === 'warm' ? 'ISINMA' : 'DİNLENME', x, y + 14, `800 12px ${bodyFont}`, C.cream);
+    text(Math.max(0, Math.ceil(g.phaseEnd - t)) + ' sn', x, y + 54, `400 ${Math.min(44, W * .1)}px ${FONT_D}`, C.cream);
+    text('SIRADAKİ: ' + MOVES[nx.move].name.toLocaleUpperCase('tr-TR') + ' · SET ' + (nx.set + 1) + '/' + G.gucSets, x, y + 76, `800 13px ${bodyFont}`, C.sun, 'left', W - G.card.width - 48);
+  }
+}
+
+function endGuc(){
+  if (G.ended) return; G.ended = true; G.mode = 'results'; clearInterval(music.timer); wake(false); sfx.end(true);
+  const g = G.guc, kg = G.gucKg, rows = [], sets = {}, muscles = {};
+  let vol = 0;
+  for (const id of MOVE_ORDER) {
+    const log = g.log[id]; if (!log || !log.length) continue;
+    const reps = log.map(s => s.reps), sum = reps.reduce((a, b) => a + b, 0);
+    sets[id] = reps; vol += sum * kg * 2;
+    for (const mu of MOVES[id].muscles) muscles[mu] = (muscles[mu] || 0) + log.length;
+    const prev = g.last && g.last.sets && g.last.sets[id] ? g.last.sets[id].reduce((a, b) => a + b, 0) : null;
+    const perfect = log.reduce((a, s) => a + s.perfect, 0), partial = log.reduce((a, s) => a + s.partial, 0);
+    const delta = prev == null ? 'İlk kayıt' : (sum - prev > 0 ? '+' : '') + (sum - prev) + ' tekrar, geçen seansa göre';
+    rows.push(`<div class="mrow"><b>${MOVES[id].name}</b><span class="sets">${reps.join(' · ')}</span><small>${delta}</small><small>${perfect} mükemmel${partial ? ' · ' + partial + ' yarım' : ''}</small></div>`);
+  }
+  let note = G.demo ? 'Demo seansı. Hareketleri bot yaptı, kaydedilmedi.' : `${String(kg).replace('.', ',')} kg dambılla. Gelecek seansta her setin hedefi bugünkü tekrarının bir fazlası olacak.`;
+  if (Object.values(sets).some(r => r.some(n => n >= REP_CAP))) note += ' Bazı setler 25 tekrara ulaştı; o hareketlerde daha ağır dambıl düşünebilirsin.';
+  if (!G.demo && Object.keys(sets).length) { const st = gucStore.get(); st.sessions.push({date: new Date().toISOString(), kg, sets}); st.sessions = st.sessions.slice(-40); gucStore.set(st); }
+  $('gVol').textContent = fmt(vol) + ' kg'; $('gMoves').innerHTML = rows.join('');
+  $('gMuscles').innerHTML = Object.entries(muscles).map(([k, v]) => `<span>${k} · ${v} set</span>`).join('');
+  $('gNote').textContent = note; $('gAgainBtn').textContent = G.demo ? 'Demoyu tekrar izle' : 'Yeni seans';
+  setTimeout(() => show('gResults'), 600);
+}
+
+function renderGuc(){
+  const guc = G.kind === 'guc';
+  $('danceOpts').hidden = guc; $('gucOpts').hidden = !guc;
+  $('kindNote').textContent = guc ? 'Dambılla omuz, kol ve sırt. Setler arasında hafif duvarlar gelir.' : 'Poz duvarları, kaçınma ve yumruk. Ekipman gerekmez.';
+  $('gucPlan').innerHTML = MOVE_ORDER.map(id => `<li><b>${MOVES[id].name}</b><small>${MOVES[id].muscles.join(', ')}</small></li>`).join('');
+  const n = G.gucSets * MOVE_ORDER.length, mins = Math.round((G.gucWarm + n * (12 * 3.6 + 6) + (n - 1) * G.gucRest) / 60);
+  const all = gucStore.get().sessions, last = all[all.length - 1];
+  let info = `${n} set, yaklaşık ${mins} dakika. Kalibrasyonu dambılsız yap, dambılları yanına koy.`;
+  if (last) {
+    const tot = Object.values(last.sets).flat().reduce((a, b) => a + b, 0);
+    const d = new Date(last.date); info += ` Son seans: ${d.toLocaleDateString('tr-TR', {day: 'numeric', month: 'long'})}, ${String(last.kg).replace('.', ',')} kg, ${fmt(tot * last.kg * 2)} kg toplam.`;
+  }
+  $('gucInfo').textContent = info;
+}
+
+/* ============================== screens and flow ============================== */
+const SCREENS = ['menu', 'loading', 'pause', 'results', 'gResults', 'hud', 'calib'];
+function show(...ids){ for (const s of SCREENS) $(s).hidden = !ids.includes(s); }
+let wakeLock = null;
+async function wake(on){ try { if (on && navigator.wakeLock) wakeLock = await navigator.wakeLock.request('screen'); else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; } } catch (e) {} }
+
+function pause(auto = false){
+  if (G.mode !== 'play') return;
+  G.mode = 'paused'; G.autoPaused = auto; G.back = 0; clock.pause();
+  $('pauseTitle').textContent = auto ? 'Kadraja geri dön' : 'Duraklatıldı';
+  $('pauseSub').hidden = !auto; $('pauseSub').textContent = 'Seni görünce oyun kaldığı yerden devam eder.';
+  $('resumeBtn').hidden = auto; show('pause', 'hud');
+}
+function resume(){ if (G.mode !== 'paused') return; G.mode = 'play'; G.lost = 0; clock.resume(); show('hud'); }
+function toMenu(){
+  clearInterval(music.timer); G.mode = 'menu'; G.demo = false; G.body = null; stopCamera(); wake(false);
+  if (actx && actx.state === 'suspended') actx.resume();
+  renderMenu(); renderGuc(); show('menu');
+}
+const ERR = {
+  insecure: 'Kamera için sayfanın https adresinden açılması gerekiyor.',
+  camera: 'Kamera izni verilmedi. Tarayıcı ayarlarından bu sayfaya kamera izni verip tekrar dene.',
+  model: 'Hareket takibi yüklenemedi. İnternet bağlantını kontrol edip tekrar dene.',
+};
+async function startCameraGame(){
+  initAudio(); G.demo = false; $('menuErr').hidden = true; $('loadText').textContent = 'Kamera açılıyor'; show('loading');
+  try {
+    await startCamera(); layout();
+    $('loadText').textContent = 'Hareket takibi yükleniyor'; await loadTracker();
+  } catch (e) {
+    stopCamera(); $('menuErr').textContent = ERR[e.kind] || ERR.model; $('menuErr').hidden = false; show('menu'); return;
+  }
+  beginCalibration();
+}
+function beginCalibration(){ tracker.J = null; G.body = null; G.calib = {since: 0, n: 0, sum: {}}; G.mode = 'calib'; show('calib'); wake(true); }
+function startDemo(){
+  initAudio(); stopCamera(); G.demo = true; VW = 480; VH = 640; layout();
+  G.body = defaultBody(84, 240, 600); G.tex.clear(); startPlay();
+}
+
+function renderMenu(){
+  const best = store.get();
+  $('levels').innerHTML = LEVELS.map((l, i) => `<label class="opt"><input type="radio" name="level" id="lvl-${l.id}" value="${i}" ${l === G.level ? 'checked' : ''}>
+    <span><b>${l.name}</b><small>${l.bpm} BPM${best[l.id + '|' + G.diff] ? ' · rekor ' + fmt(best[l.id + '|' + G.diff]) : ''}</small></span></label>`).join('');
+  $('diffs').innerHTML = Object.entries(DIFFS).map(([k, d]) => `<label class="opt"><input type="radio" name="diff" id="diff-${k}" value="${k}" ${k === G.diff ? 'checked' : ''}><span><b>${d.label}</b></span></label>`).join('');
+}
+function renderPoseStrip(){
+  const el = $('poseStrip');
+  ['y', 'cactus', 'discoL', 'star'].forEach((id, i) => {
+    const c = document.createElement('canvas'), w = 150, h = 200; c.width = w; c.height = h; el.appendChild(c);
+    const x = c.getContext('2d'); panel(x, w, h, WALL_COLORS[i]);
+    cutout(x, buildSkeleton(POSES[id], defaultBody(31, w / 2, h - 16), 0), 19, 15, v => v, v => v);
+  });
+}
+
+$('levels').addEventListener('change', e => { G.level = LEVELS[+e.target.value]; });
+$('diffs').addEventListener('change', e => { G.diff = e.target.value; renderMenu(); });
+$('training').addEventListener('change', e => { G.training = e.target.checked; });
+$('kinds').addEventListener('change', e => { G.kind = e.target.value; saveSettings(); renderGuc(); });
+$('gucSets').addEventListener('change', e => { G.gucSets = +e.target.value; saveSettings(); renderGuc(); });
+$('gucRestSel').addEventListener('change', e => { G.gucRest = +e.target.value; saveSettings(); renderGuc(); });
+$('gucKg').addEventListener('change', e => { const v = parseFloat(String(e.target.value).replace(',', '.')); G.gucKg = isFinite(v) ? clamp(Math.round(v * 2) / 2, .5, 50) : 5; e.target.value = G.gucKg; saveSettings(); renderGuc(); });
+$('gAgainBtn').addEventListener('click', () => { initAudio(); if (G.demo) startDemo(); else beginCalibration(); });
+$('gMenuBtn').addEventListener('click', toMenu);
+$('startBtn').addEventListener('click', startCameraGame);
+$('demoBtn').addEventListener('click', startDemo);
+$('pauseBtn').addEventListener('click', () => pause(false));
+$('resumeBtn').addEventListener('click', resume);
+$('quitBtn').addEventListener('click', toMenu);
+$('menuBtn').addEventListener('click', toMenu);
+$('againBtn').addEventListener('click', () => { initAudio(); if (G.demo) startDemo(); else beginCalibration(); });
+addEventListener('keydown', e => { if (e.key === 'Escape' || e.key === 'p') { G.mode === 'play' ? pause(false) : (G.mode === 'paused' && !G.autoPaused && resume()); } });
+document.addEventListener('visibilitychange', () => { if (document.hidden) pause(false); else if (G.mode === 'play' || G.mode === 'calib') wake(true); });
+addEventListener('resize', resize);
+
+loadSettings(); resize(); renderMenu(); renderGuc(); renderPoseStrip();
+if (document.fonts && document.fonts.load) document.fonts.load(`40px ${FONT_D}`).then(() => { $('poseStrip').innerHTML = ''; renderPoseStrip(); G.tex.clear(); }).catch(() => {});
+requestAnimationFrame(frame);
+window.__dd = {G, POSES, buildSkeleton, scorePose, defaultBody, buildMap, LEVELS, DIFFS, tracker, beginCalibration, MOVES, moveSkeleton, measureMove, gucStore};   // handy in the console when tuning
+</script>
+</body>
+</html>
