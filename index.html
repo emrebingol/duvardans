@@ -195,12 +195,16 @@ ol.plan small{color:var(--mute);font-size:13px;text-align:right}
           <label class="opt"><input type="radio" name="grest" id="grest-120" value="120"><span><b>120 sn</b></span></label>
         </div>
       </fieldset>
+      <label class="check"><input type="checkbox" id="coachOn" checked>
+        <span><b>Sesli koç</b><small id="coachNote">Türkçe geri sayım, son tekrarlar, rekor ve form uyarıları. Tekrarın başlangıcına denk gelecek şekilde konuşur.</small></span></label>
       <fieldset>
         <legend>Bu seans</legend>
         <ol class="plan" id="gucPlan"></ol>
         <p class="note" id="gucInfo"></p>
       </fieldset>
     </div>
+    <label class="check"><input type="checkbox" id="musicOn" checked>
+      <span><b>Oyun müziği</b><small>Kapatırsan Spotify gibi kendi müziğini arkada çalabilirsin. Efekt sesleri devam eder.</small></span></label>
     <p class="err" id="menuErr" hidden></p>
     <div class="actions">
       <button class="btn" id="startBtn" type="button">Kamerayı aç ve başla</button>
@@ -439,6 +443,8 @@ function buildMap(level, diffKey){
 /* ============================== audio ============================== */
 let actx = null, master = null, noiseBuf = null;
 function initAudio(){
+  try { if (navigator.audioSession) navigator.audioSession.type = G.music ? 'auto' : 'ambient'; } catch (e) {}   // 'ambient' lets Spotify keep playing
+  coach.warm();
   if (actx) { actx.resume(); return; }
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
   actx = new AC(); master = actx.createGain(); master.gain.value = .7;
@@ -465,7 +471,7 @@ function noise(t, dur, vol, hp){
 const CHORDS = [[110, 220, 261.6, 329.6], [87.3, 174.6, 220, 261.6], [130.8, 261.6, 329.6, 392], [98, 196, 246.9, 293.7]]; // Am F C G
 const music = {step: 0, timer: 0};
 function scheduleMusic(){
-  if (!actx || clock.perf || G.mode !== 'play') return;
+  if (!actx || clock.perf || G.mode !== 'play' || !G.music) return;
   const half = G.spb / 2;
   for (;;) {
     const i = music.step, t = clock.t0 + LEAD + i * half;
@@ -571,7 +577,7 @@ const canvas = $('stage'), mainCtx = canvas.getContext('2d');
 const layer = document.createElement('canvas'), layerCtx = layer.getContext('2d');
 let ctx = mainCtx;
 const PLAYER_ALPHA = .5;
-const G = {mode: 'menu', kind: 'dans', gucKg: 5, gucSets: 3, gucRest: 90, gucWarm: 75, level: LEVELS[0], diff: 'kolay', training: false, demo: false, events: [], body: null,
+const G = {mode: 'menu', kind: 'dans', music: true, coachOn: true, gucKg: 5, gucSets: 3, gucRest: 90, gucWarm: 75, level: LEVELS[0], diff: 'kolay', training: false, demo: false, events: [], body: null,
            pops: [], shards: [], flash: 0, tex: new Map(), calib: null, lost: 0, back: 0, autoPaused: false};
 const hands = {l: null, r: null, sl: 0, sr: 0};
 
@@ -927,7 +933,7 @@ function frame(now){
     if (G.mode === 'play') { G.lost = inFrame || (guc && !lifting) ? 0 : G.lost + dt; if (G.lost > 1.2) pause(true); }
     else if (G.mode === 'paused' && G.autoPaused) { G.back = inFrame ? G.back + dt : 0; if (G.back > .8) resume(); }
   }
-  if (G.mode === 'play') { judge(t, J); if (G.kind === 'guc') gucUpdate(t, J); if (G.mode === 'play' && t > G.endT) endRun(true); }
+  if (G.mode === 'play') { judge(t, J); if (G.kind === 'guc') { gucUpdate(t, J); coach.tick(t); } if (G.mode === 'play' && t > G.endT) endRun(true); }
 
   let parts = null;
   const next = G.events.find(e => !e.done && e.type === 'pose');
@@ -966,11 +972,12 @@ const gucStore = {
 function loadSettings(){
   try { const o = JSON.parse(localStorage.getItem('duvardans.settings') || '{}');
     if (o.kind === 'guc' || o.kind === 'dans') G.kind = o.kind;
+    if (typeof o.music === 'boolean') G.music = o.music; if (typeof o.coach === 'boolean') G.coachOn = o.coach;
     if (o.kg > 0) G.gucKg = o.kg; if ([1, 2, 3].includes(o.sets)) G.gucSets = o.sets; if ([60, 90, 120].includes(o.rest)) G.gucRest = o.rest;
   } catch (e) {}
-  $('kind-' + G.kind).checked = true; $('gucKg').value = G.gucKg; $('gsets-' + G.gucSets).checked = true; $('grest-' + G.gucRest).checked = true;
+  $('kind-' + G.kind).checked = true; $('gucKg').value = G.gucKg; $('gsets-' + G.gucSets).checked = true; $('grest-' + G.gucRest).checked = true; $('musicOn').checked = G.music; $('coachOn').checked = G.coachOn;
 }
-function saveSettings(){ try { localStorage.setItem('duvardans.settings', JSON.stringify({kind: G.kind, kg: G.gucKg, sets: G.gucSets, rest: G.gucRest})); } catch (e) {} }
+function saveSettings(){ try { localStorage.setItem('duvardans.settings', JSON.stringify({kind: G.kind, kg: G.gucKg, sets: G.gucSets, rest: G.gucRest, music: G.music, coach: G.coachOn})); } catch (e) {} }
 const periodSec = id => MOVES[id].tempo.reduce((a, b) => a + b, 0) * G.spb;
 
 /* Side view (row, kickback): hips back, torso hinged 50°, both arms nearly on top of each other. dir = facing direction on screen. */
@@ -1064,6 +1071,48 @@ function lightWalls(from, to, pool){
   return out;
 }
 
+
+/* ============================== sesli koç ==============================
+   Speech engines start talking a few hundred ms after speak(). Every cue is tied to a known moment on the song clock
+   (a countdown beat, the start of the next rep) and fired early by the latency measured on this phone.            */
+const coach = {
+  voice: null, lat: .3, queue: [], hasVoices: false,
+  ok(){ return G.coachOn && G.kind === 'guc' && 'speechSynthesis' in window; },
+  init(){
+    if (!('speechSynthesis' in window)) return;
+    const pick = () => { const vs = speechSynthesis.getVoices(); this.hasVoices = vs.length > 0;
+      this.voice = vs.find(v => /^tr/i.test(v.lang) && !/compact/i.test(v.name)) || vs.find(v => /^tr/i.test(v.lang)) || null; renderGuc(); };
+    pick(); try { speechSynthesis.addEventListener('voiceschanged', pick); } catch (e) {}
+  },
+  utter(text){ const u = new SpeechSynthesisUtterance(text); u.lang = 'tr-TR'; if (this.voice) u.voice = this.voice; u.rate = 1.12; return u; },
+  warm(){                                                   // must run inside the tap: unlocks speech on iPhone and loads the voice
+    if (!this.ok()) return;
+    try { speechSynthesis.cancel(); const u = this.utter(' '); u.volume = 0; speechSynthesis.speak(u); } catch (e) {}
+  },
+  say(text, prio = 1){
+    if (!this.ok()) return;
+    try {
+      if (speechSynthesis.speaking || speechSynthesis.pending) { if (prio < 2) return; speechSynthesis.cancel(); }
+      const u = this.utter(text), t0 = performance.now();
+      u.onstart = () => { const d = (performance.now() - t0) / 1000; if (d > 0 && d < 1.5) this.lat = this.lat * .6 + d * .4; };
+      speechSynthesis.speak(u);
+    } catch (e) {}
+  },
+  at(t, text, prio = 1){                                    // t on the song clock: the moment the first word should be heard
+    if (!this.ok()) return;
+    if (this.queue.some(c => Math.abs(c.t - t) < .3 && c.prio >= prio)) return;
+    this.queue = this.queue.filter(c => !(Math.abs(c.t - t) < .3));
+    this.queue.push({t, text, prio});
+  },
+  tick(t){
+    for (const c of this.queue) if (!c.done && t >= c.t - this.lat) { c.done = true; if (t - c.t < .6) this.say(c.text, c.prio); }
+    this.queue = this.queue.filter(c => !c.done);
+  },
+  clear(){ this.queue = []; try { if ('speechSynthesis' in window) speechSynthesis.cancel(); } catch (e) {} },
+};
+const ORD = ['Birinci', 'İkinci', 'Üçüncü'];
+function nextCycle(g, t){ const per = periodSec(g.queue[g.idx].move), k = Math.ceil((t - g.setStart) / per + .05); return g.setStart + k * per; }
+
 function newGucRun(){
   newRun();                                                   // shared resets: score, combo, effects
   G.map = {bpm: GUC_BPM, beats: 1e6, events: []}; G.spb = 60 / GUC_BPM; G.d = DIFFS.kolay; G.endT = Infinity;
@@ -1072,6 +1121,8 @@ function newGucRun(){
   const same = gucStore.get().sessions.filter(x => x.kg === G.gucKg);
   G.guc = {phase: 'warm', phaseEnd: G.gucWarm, queue, idx: 0, doneSets: 0, log: {}, last: same[same.length - 1] || null, rep: null, pickCue: false, live: null};
   G.events = lightWalls(4, G.gucWarm - 3, ['t', 'y', 'up', 'cactus', 'hips', 'leftUp', 'rightUp']);
+  coach.queue = []; coach.at(.4, 'Isınma turu. Duvarları takip et.', 2);
+  if (G.gucWarm > 14) coach.at(G.gucWarm - 10, 'On saniye. Dambılları al.', 2);
 }
 const newRep = t => ({state: 'down', peak: -1, err: 0, n: 0, flags: {}, t0: t});
 function gucSection(){ const ph = G.guc ? G.guc.phase : 'warm'; return ph === 'set' ? 2 : ph === 'rest' || ph === 'done' ? 3 : 1; }
@@ -1084,6 +1135,10 @@ function startIntro(t){
   const prev = g.last && g.last.sets && g.last.sets[it.move] ? g.last.sets[it.move][it.set] : null;
   g.prev = prev == null ? null : prev; g.target = prev == null ? null : Math.min(MOVES[it.move].cap, prev + 1);
   G.pops.push({text: MOVES[it.move].name.toLocaleUpperCase('tr-TR'), sub: 'SET ' + (it.set + 1) + '/' + G.gucSets, color: C.sun, t0: performance.now(), big: true});
+  const head = it.set === 0 ? MOVES[it.move].name + '. ' + MOVES[it.move].cue : ORD[it.set] + ' set.' + (g.target ? ' Hedef ' + g.target + '.' : '');
+  coach.at(g.introStart, head, 2);
+  ['Üç', 'İki', 'Bir'].forEach((w, i) => coach.at(g.setStart - (3 - i) * G.spb, w, 3));
+  coach.at(g.setStart, MOVES[it.move].side ? 'Çek' : 'Başla', 3);
 }
 function finishRep(t){
   const g = G.guc, r = g.rep, err = r.n ? r.err / r.n : 1, flag = Object.keys(r.flags)[0];
@@ -1094,9 +1149,16 @@ function finishRep(t){
     const pts = (perfect ? 100 : 50) * mult(); G.score += pts;
     G.pops.push({text: flag ? FLAG_TEXT[flag] : perfect ? 'MÜKEMMEL' : 'İYİ', sub: g.reps + '. TEKRAR · +' + fmt(pts), color: flag ? C.coral : perfect ? C.sun : C.mint, t0: performance.now()});
     sfx.hit(perfect);
+    const cap = MOVES[g.queue[g.idx].move].cap, nc = nextCycle(g, t);
+    if (flag) coach.say(FLAG_TEXT[flag].toLocaleLowerCase('tr-TR'), 1);
+    else if (g.prev != null && g.reps === g.prev + 1) coach.at(nc, 'Rekor! Devam.', 2);
+    else if (cap - g.reps === 3) coach.at(nc, 'Son üç.', 2);
+    else if (cap - g.reps === 1) coach.at(nc, 'Son tekrar!', 2);
+    else if (g.prev != null && g.reps === g.prev) coach.at(nc, 'Bir tane daha, rekor.', 1);
   } else {
     g.partials++; g.partialStreak++; G.combo = 0;
     G.pops.push({text: 'YARIM', sub: flag ? FLAG_TEXT[flag] : 'TAM AÇ', color: C.coral, t0: performance.now()}); sfx.miss();
+    coach.say(flag ? FLAG_TEXT[flag].toLocaleLowerCase('tr-TR') : 'Tam aç.', 1);
   }
   g.rep = newRep(t);
 }
@@ -1107,8 +1169,12 @@ function endSet(t, reason){
   const why = {cap: 'ÜST SINIRA ULAŞTIN', half: '2 YARIM TEKRAR ÜST ÜSTE', quiet: 'TEKRAR GELMEDİ', blind: 'KAMERA KOLLARINI GÖREMEDİ'}[reason];
   G.pops.push({text: 'SET BİTTİ · ' + g.reps + ' TEKRAR', sub: why, color: C.cream, t0: performance.now(), big: true});
   sfx.end(true);
-  if (g.idx >= g.queue.length) { g.phase = 'done'; g.phaseEnd = t + 1.6; return; }
+  coach.queue = [];
+  if (g.idx >= g.queue.length) { g.phase = 'done'; g.phaseEnd = t + 1.6; coach.say(g.reps + ' tekrar. Antrenman bitti, harika iş.', 3); return; }
   g.phase = 'rest'; g.phaseEnd = t + G.gucRest; g.pickCue = false;
+  coach.say((reason === 'cap' ? 'Üst sınır! ' : '') + g.reps + ' tekrar. Dinlen.', 3);
+  const nx = g.queue[g.idx];
+  coach.at(g.phaseEnd - 10, 'On saniye. Dambılları al.' + (MOVES[nx.move].side ? ' Kameraya yan dön.' : ''), 2);
   G.events = G.events.filter(e => !e.done).concat(lightWalls(t + 7, t + G.gucRest - 9, ['hips', 'leanL', 'leanR', 'up', 't']));
 }
 function gucUpdate(t, J){
@@ -1139,7 +1205,7 @@ function gucUpdate(t, J){
     if (mm.dir) g.dir = mm.dir;
     if (r.state === 'down' && mm.p > mv.topAt * .6) r.state = 'up';
     else if (r.state === 'up' && mm.p < .18) finishRep(t);
-    if (!g.cheered && g.reps >= 3 && r.state === 'up' && t - r.t0 > per * 1.6) { g.cheered = true; G.pops.push({text: 'DAYAN', color: C.sun, t0: performance.now()}); }
+    if (!g.cheered && g.reps >= 3 && r.state === 'up' && t - r.t0 > per * 1.6) { g.cheered = true; G.pops.push({text: 'DAYAN', color: C.sun, t0: performance.now()}); coach.say('Bırakma!', 2); }
   }
   // the set ends at the rep cap, after two half reps in a row, or when no full rep arrives for two tempo cycles (near failure)
   if (g.reps >= mv.cap) endSet(t, 'cap');
@@ -1239,6 +1305,7 @@ function renderGuc(){
     const d = new Date(last.date); info += ` Son seans: ${d.toLocaleDateString('tr-TR', {day: 'numeric', month: 'long'})}, ${String(last.kg).replace('.', ',')} kg, ${fmt(tot * last.kg * 2)} kg toplam.`;
   }
   $('gucInfo').textContent = info;
+  if (typeof coach !== 'undefined' && coach.hasVoices && !coach.voice) $('coachNote').textContent = 'Bu cihazda Türkçe ses bulunamadı, koç başka bir dille konuşabilir. Telefon ayarlarından Türkçe ses indirebilirsin.';
 }
 
 /* ============================== screens and flow ============================== */
@@ -1249,14 +1316,14 @@ async function wake(on){ try { if (on && navigator.wakeLock) wakeLock = await na
 
 function pause(auto = false){
   if (G.mode !== 'play') return;
-  G.mode = 'paused'; G.autoPaused = auto; G.back = 0; clock.pause();
+  G.mode = 'paused'; G.autoPaused = auto; G.back = 0; clock.pause(); coach.clear();
   $('pauseTitle').textContent = auto ? 'Kadraja geri dön' : 'Duraklatıldı';
   $('pauseSub').hidden = !auto; $('pauseSub').textContent = 'Seni görünce oyun kaldığı yerden devam eder.';
   $('resumeBtn').hidden = auto; show('pause', 'hud');
 }
 function resume(){ if (G.mode !== 'paused') return; G.mode = 'play'; G.lost = 0; clock.resume(); show('hud'); }
 function toMenu(){
-  clearInterval(music.timer); G.mode = 'menu'; G.demo = false; G.body = null; stopCamera(); wake(false);
+  clearInterval(music.timer); coach.clear(); G.mode = 'menu'; G.demo = false; G.body = null; stopCamera(); wake(false);
   if (actx && actx.state === 'suspended') actx.resume();
   renderMenu(); renderGuc(); show('menu');
 }
@@ -1305,6 +1372,8 @@ $('gucRestSel').addEventListener('change', e => { G.gucRest = +e.target.value; s
 $('gucKg').addEventListener('change', e => { const v = parseFloat(String(e.target.value).replace(',', '.')); G.gucKg = isFinite(v) ? clamp(Math.round(v * 2) / 2, .5, 50) : 5; e.target.value = G.gucKg; saveSettings(); renderGuc(); });
 $('gAgainBtn').addEventListener('click', () => { initAudio(); if (G.demo) startDemo(); else beginCalibration(); });
 $('gMenuBtn').addEventListener('click', toMenu);
+$('musicOn').addEventListener('change', e => { G.music = e.target.checked; saveSettings(); });
+$('coachOn').addEventListener('change', e => { G.coachOn = e.target.checked; saveSettings(); });
 $('startBtn').addEventListener('click', startCameraGame);
 $('demoBtn').addEventListener('click', startDemo);
 $('pauseBtn').addEventListener('click', () => pause(false));
@@ -1316,10 +1385,10 @@ addEventListener('keydown', e => { if (e.key === 'Escape' || e.key === 'p') { G.
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(false); else if (G.mode === 'play' || G.mode === 'calib') wake(true); });
 addEventListener('resize', resize);
 
-loadSettings(); resize(); renderMenu(); renderGuc(); renderPoseStrip();
+loadSettings(); resize(); renderMenu(); renderGuc(); coach.init(); renderPoseStrip();
 if (document.fonts && document.fonts.load) document.fonts.load(`40px ${FONT_D}`).then(() => { $('poseStrip').innerHTML = ''; renderPoseStrip(); G.tex.clear(); }).catch(() => {});
 requestAnimationFrame(frame);
-window.__dd = {G, POSES, buildSkeleton, scorePose, defaultBody, buildMap, LEVELS, DIFFS, tracker, beginCalibration, MOVES, moveSkeleton, measureMove, gucStore};   // handy in the console when tuning
+window.__dd = {G, POSES, buildSkeleton, scorePose, defaultBody, buildMap, LEVELS, DIFFS, tracker, beginCalibration, coach, MOVES, moveSkeleton, measureMove, gucStore};   // handy in the console when tuning
 </script>
 </body>
 </html>
