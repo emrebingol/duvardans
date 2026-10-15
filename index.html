@@ -923,7 +923,7 @@ function frame(now){
   }
   if (!G.demo) {                                                       // auto-pause when the body leaves the frame
     const guc = G.kind === 'guc', lifting = guc && (G.guc.phase === 'set' || G.guc.phase === 'intro');
-    const inFrame = J && (guc ? vis(J.ls, J.rs) : vis(J.ls, J.rs, J.lh, J.rh));       // bent-over moves can hide the hips
+    const inFrame = J && (guc ? (vis(J.ls) || vis(J.rs)) : vis(J.ls, J.rs, J.lh, J.rh));       // bent-over moves can hide the hips
     if (G.mode === 'play') { G.lost = inFrame || (guc && !lifting) ? 0 : G.lost + dt; if (G.lost > 1.2) pause(true); }
     else if (G.mode === 'paused' && G.autoPaused) { G.back = inFrame ? G.back + dt : 0; if (G.back > .8) resume(); }
   }
@@ -945,16 +945,19 @@ function frame(now){
 /* ============================== GÜÇ MODU (dambıl) ==============================
    A session: warm-up walls -> for every move and set: intro (ghost demonstrates the tempo) -> set -> rest with light walls.
    The ghost silhouette moves at the target tempo; reps are counted from the player's own range of motion.             */
-const GUC_BPM = 100, REP_CAP = 25;
+const GUC_BPM = 100;
 // tempo in beats: [up, hold at top, down, pause at bottom]; 6 beats = 3.6 s per rep at 100 BPM
 const MOVES = {
-  press:   {name: 'Omuz pres',     muscles: ['Omuz', 'Triceps (ikincil)'], tempo: [2, 0, 3, 1], cap: 25, topAt: .85, shrug: .55, cue: 'Dambıllar omuz hizasında başlar, baş üstüne itilir.'},
+  press:   {name: 'Omuz pres',     muscles: ['Omuz', 'Triceps (ikincil)'], tempo: [2, 0, 3, 1], cap: 15, topAt: .85, shrug: .55, cue: 'Dambıllar omuz hizasında başlar, baş üstüne itilir.'},
   lateral: {name: 'Yana kaldırma', muscles: ['Omuz'],                      tempo: [2, 1, 3, 0], cap: 15, topAt: .85, shrug: .7,  cue: 'Kollar hafif bükük. Omuz hizasında dur, yukarı çıkma.'},
   curl:    {name: 'Curl',          muscles: ['Biceps'],                    tempo: [2, 0, 3, 1], cap: 12, topAt: .85, shrug: .7,  cue: 'Dirsekler gövdenin yanında sabit, gövde sallanmaz.'},
-  rearT:   {name: 'Eğik T',        muscles: ['Arka omuz', 'Üst sırt'],     tempo: [2, 1, 3, 0], cap: 25, topAt: .8,  cue: 'Kalçadan öne eğil, sırt düz. Kolları yana aç.'},
+  rearT:   {name: 'Eğik T',        muscles: ['Arka omuz', 'Üst sırt'],     tempo: [2, 1, 3, 0], cap: 15, topAt: .8,  cue: 'Kalçadan öne eğil, sırt düz. Kolları yana aç.'},
+  row:      {name: 'Bent-over row', muscles: ['Sırt', 'Biceps (ikincil)'], tempo: [2, 1, 3, 0], cap: 15, topAt: .85, side: true, cue: 'Kameraya yan dön. Kalçadan eğil, dirsekleri kalçana doğru çek.'},
+  kickback: {name: 'Kickback',      muscles: ['Triceps'],                  tempo: [2, 1, 3, 0], cap: 12, topAt: .85, side: true, cue: 'Yan dur, öne eğil. Dirsek gövdenin yanında sabit, kolu geriye aç.'},
 };
-const MOVE_ORDER = ['press', 'lateral', 'curl', 'rearT'];
-const FLAG_TEXT = {shrug: 'OMUZLARI İNDİR', over: 'OMUZ HİZASINDA DUR', drift: 'DİRSEKLER YANDA', sway: 'SALLANMA', notBent: 'ÖNE EĞİL'};
+const MOVE_ORDER = ['press', 'lateral', 'curl', 'rearT', 'row', 'kickback'];
+const FLAG_TEXT = {shrug: 'OMUZLARI İNDİR', over: 'OMUZ HİZASINDA DUR', drift: 'DİRSEKLER YANDA', sway: 'SALLANMA', notBent: 'ÖNE EĞİL', front: 'KAMERAYA YAN DÖN', noPull: 'DİRSEKLERİ GERİ ÇEK', drop: 'DİRSEK YUKARIDA KALSIN'};
+const angAt = (A, B, C) => { const a = Math.atan2(A.y - B.y, A.x - B.x) - Math.atan2(C.y - B.y, C.x - B.x); let d = Math.abs(a) / RAD; return d > 180 ? 360 - d : d; };
 const smooth = x => x * x * (3 - 2 * x);
 const gucStore = {
   get(){ try { const o = JSON.parse(localStorage.getItem('duvardans.guc') || '{}'); return {sessions: Array.isArray(o.sessions) ? o.sessions : []}; } catch (e) { return {sessions: []}; } },
@@ -970,8 +973,25 @@ function loadSettings(){
 function saveSettings(){ try { localStorage.setItem('duvardans.settings', JSON.stringify({kind: G.kind, kg: G.gucKg, sets: G.gucSets, rest: G.gucRest})); } catch (e) {} }
 const periodSec = id => MOVES[id].tempo.reduce((a, b) => a + b, 0) * G.spb;
 
+/* Side view (row, kickback): hips back, torso hinged 50°, both arms nearly on top of each other. dir = facing direction on screen. */
+function sideSkeleton(id, p, b, dir = 1){
+  const h = 50 * RAD, L = (a, c) => a + (c - a) * p, gy = b.groundY, ax = b.cx;
+  const hip = pt(ax - dir * .25 * b.sw, gy - b.legLen * .9), knee = pt(ax + dir * .12 * b.sw, gy - b.sh), ankle = pt(ax, gy);
+  const sc = pt(hip.x + dir * Math.sin(h) * b.torso, hip.y - Math.cos(h) * b.torso);
+  const nose = pt(sc.x + dir * Math.sin(h + .25) * b.headUp, sc.y - Math.cos(h + .25) * b.headUp);
+  const v = deg => [-dir * Math.sin(deg * RAD), Math.cos(deg * RAD)];          // angle from straight down, positive = toward the back
+  const ua = id === 'row' ? L(0, 85) : 50, fa = id === 'row' ? 0 : L(-40, 50);
+  const el = pt(sc.x + v(ua)[0] * b.ua, sc.y + v(ua)[1] * b.ua), wr = pt(el.x + v(fa)[0] * b.fa, el.y + v(fa)[1] * b.fa);
+  const J = {hc: hip, sc, nose}, off = .06 * b.sw;
+  for (const [k, o] of [['l', -off], ['r', off]]) {
+    J[k + 's'] = pt(sc.x + o, sc.y); J[k + 'e'] = pt(el.x + o, el.y); J[k + 'w'] = pt(wr.x + o, wr.y);
+    J[k + 'h'] = pt(hip.x + o, hip.y); J[k + 'k'] = pt(knee.x + o, knee.y); J[k + 'a'] = pt(ankle.x + o, ankle.y);
+  }
+  return J;
+}
 /* Skeleton of a move at phase p (0 = start, 1 = top). Used for the ghost guide and the demo bot. */
-function moveSkeleton(id, p, b){
+function moveSkeleton(id, p, b, dir = 1){
+  if (MOVES[id].side) return sideSkeleton(id, p, b, dir);
   const L = (a, c) => a + (c - a) * p;
   let pose;
   if (id === 'press')        pose = {...REST, a: [L(88, 166), L(178, 176), L(88, 166), L(178, 176)]};
@@ -988,6 +1008,19 @@ function moveSkeleton(id, p, b){
 
 /* The player's phase in the current move, plus form flags. */
 function measureMove(id, J, b){
+  if (MOVES[id].side) {
+    const [k, kv] = ['l', 'r'].map(k => [k, Math.min(J[k + 's'].v, J[k + 'e'].v, J[k + 'w'].v)]).sort((a, c) => c[1] - a[1])[0];
+    if (kv < .35) return null;
+    const s = J[k + 's'], e = J[k + 'e'], w = J[k + 'w'], hip = J[k + 'h'].v >= .3 ? J[k + 'h'] : mid(J.lh, J.rh);
+    const dir = Math.sign(J.nose.x - s.x) || 1, ang = angAt(s, e, w), back = (e.x - s.x) * dir;   // back < 0: elbow behind the shoulder
+    const hinge = Math.atan2((s.x - hip.x) * dir, hip.y - s.y) / RAD, f = {};
+    if (Math.abs(J.ls.x - J.rs.x) > .55 * b.sw) f.front = 1;
+    if (hinge < 25) f.notBent = 1;
+    let p;
+    if (id === 'row') { p = (172 - ang) / 77; if (p > .7 && back > -.05 * b.ua) f.noPull = 1; }
+    else { p = (ang - 95) / 75; if (back > -.3 * b.ua) f.drop = 1; }
+    return {p: clamp(p, -.2, 1.2), f, hinge, dir};
+  }
   const thr = id === 'rearT' ? .35 : .5;
   const arms = [['l', -1], ['r', 1]].filter(([k]) => [J[k + 's'], J[k + 'e'], J[k + 'w']].every(j => j && j.v >= thr));
   if (!arms.length || (id === 'rearT' && arms.length < 2)) return null;
@@ -1082,7 +1115,7 @@ function gucUpdate(t, J){
   const g = G.guc;
   if (g.phase === 'done') { if (t >= g.phaseEnd) endGuc(); return; }
   if (g.phase === 'warm' || g.phase === 'rest') {
-    if (!g.pickCue && t > g.phaseEnd - 8) { g.pickCue = true; G.pops.push({text: 'DAMBILLARI AL', color: C.sun, t0: performance.now(), big: true}); }
+    if (!g.pickCue && t > g.phaseEnd - 8) { g.pickCue = true; G.pops.push({text: 'DAMBILLARI AL', sub: MOVES[g.queue[g.idx].move].side ? 'KAMERAYA YAN DÖN' : '', color: C.sun, t0: performance.now(), big: true}); }
     if (t >= g.phaseEnd) startIntro(t);
     return;
   }
@@ -1102,6 +1135,8 @@ function gucUpdate(t, J){
     r.err += Math.abs(clamp(mm.p) - targetP(g, t)); r.n++;
     for (const k in mm.f) r.flags[k] = 1;
     r.peak = Math.max(r.peak, mm.p);
+    if (mm.hinge != null) { r.hMin = Math.min(r.hMin ?? 99, mm.hinge); r.hMax = Math.max(r.hMax ?? -99, mm.hinge); if (r.hMax - r.hMin > 18) r.flags.sway = 1; }
+    if (mm.dir) g.dir = mm.dir;
     if (r.state === 'down' && mm.p > mv.topAt * .6) r.state = 'up';
     else if (r.state === 'up' && mm.p < .18) finishRep(t);
     if (!g.cheered && g.reps >= 3 && r.state === 'up' && t - r.t0 > per * 1.6) { g.cheered = true; G.pops.push({text: 'DAYAN', color: C.sun, t0: performance.now()}); }
@@ -1128,7 +1163,7 @@ function gucParts(t){
 function drawGhost(t){
   const g = G.guc; if (g.phase !== 'intro' && g.phase !== 'set') return;
   const id = g.queue[g.idx].move, tp = g.phase === 'set' ? targetP(g, t) : targetP(g, t, g.introStart);
-  const J = moveSkeleton(id, tp, G.body), sw = G.body.sw * view.s;
+  const J = moveSkeleton(id, tp, G.body, g.dir || 1), sw = G.body.sw * view.s;
   ctx = layerCtx; flat(); ctx.clearRect(0, 0, W, H);
   ctx.strokeStyle = ctx.fillStyle = C.sun; tracePose(ctx, J, sw * .58, sw * .46);
   ctx.globalCompositeOperation = 'destination-out'; ctx.globalAlpha = .8; ctx.strokeStyle = ctx.fillStyle = '#000';
