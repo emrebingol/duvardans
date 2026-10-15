@@ -948,10 +948,10 @@ function frame(now){
 const GUC_BPM = 100, REP_CAP = 25;
 // tempo in beats: [up, hold at top, down, pause at bottom]; 6 beats = 3.6 s per rep at 100 BPM
 const MOVES = {
-  press:   {name: 'Omuz pres',     muscles: ['Omuz', 'Triceps (ikincil)'], tempo: [2, 0, 3, 1], shrug: .55, cue: 'Dambıllar omuz hizasında başlar, baş üstüne itilir.'},
-  lateral: {name: 'Yana kaldırma', muscles: ['Omuz'],                      tempo: [2, 1, 3, 0], shrug: .7,  cue: 'Kollar hafif bükük. Omuz hizasında dur, yukarı çıkma.'},
-  curl:    {name: 'Curl',          muscles: ['Biceps'],                    tempo: [2, 0, 3, 1], shrug: .7,  cue: 'Dirsekler gövdenin yanında sabit, gövde sallanmaz.'},
-  rearT:   {name: 'Eğik T',        muscles: ['Arka omuz', 'Üst sırt'],     tempo: [2, 1, 3, 0],             cue: 'Kalçadan öne eğil, sırt düz. Kolları yana aç.'},
+  press:   {name: 'Omuz pres',     muscles: ['Omuz', 'Triceps (ikincil)'], tempo: [2, 0, 3, 1], cap: 25, topAt: .85, shrug: .55, cue: 'Dambıllar omuz hizasında başlar, baş üstüne itilir.'},
+  lateral: {name: 'Yana kaldırma', muscles: ['Omuz'],                      tempo: [2, 1, 3, 0], cap: 15, topAt: .85, shrug: .7,  cue: 'Kollar hafif bükük. Omuz hizasında dur, yukarı çıkma.'},
+  curl:    {name: 'Curl',          muscles: ['Biceps'],                    tempo: [2, 0, 3, 1], cap: 12, topAt: .85, shrug: .7,  cue: 'Dirsekler gövdenin yanında sabit, gövde sallanmaz.'},
+  rearT:   {name: 'Eğik T',        muscles: ['Arka omuz', 'Üst sırt'],     tempo: [2, 1, 3, 0], cap: 25, topAt: .8,  cue: 'Kalçadan öne eğil, sırt düz. Kolları yana aç.'},
 };
 const MOVE_ORDER = ['press', 'lateral', 'curl', 'rearT'];
 const FLAG_TEXT = {shrug: 'OMUZLARI İNDİR', over: 'OMUZ HİZASINDA DUR', drift: 'DİRSEKLER YANDA', sway: 'SALLANMA', notBent: 'ÖNE EĞİL'};
@@ -988,7 +988,8 @@ function moveSkeleton(id, p, b){
 
 /* The player's phase in the current move, plus form flags. */
 function measureMove(id, J, b){
-  const arms = [['l', -1], ['r', 1]].filter(([k]) => vis(J[k + 's'], J[k + 'e'], J[k + 'w']));
+  const thr = id === 'rearT' ? .35 : .5;
+  const arms = [['l', -1], ['r', 1]].filter(([k]) => [J[k + 's'], J[k + 'e'], J[k + 'w']].every(j => j && j.v >= thr));
   if (!arms.length || (id === 'rearT' && arms.length < 2)) return null;
   const m = measure(J, b), f = {};
   const avg = fn => arms.reduce((s, [k, side]) => s + fn(k, side), 0) / arms.length;
@@ -1001,7 +1002,7 @@ function measureMove(id, J, b){
     if (avg((k, side) => Math.abs(segAngle(side, J[k + 's'], J[k + 'e']))) > 35) f.drift = 1;
     if (Math.abs(m.lean) > 10) f.sway = 1;
   } else {
-    p = (Math.abs(J.lw.x - J.rw.x) - b.sw) / (1.8 * (b.ua + b.fa));
+    p = (Math.abs(J.lw.x - J.rw.x) - b.sw) / (1.6 * (b.ua + b.fa));
     if ((m.sc.y - (b.groundY - b.legLen - b.torso)) / b.torso < .15) f.notBent = 1;
   }
   if (MOVES[id].shrug && J.nose.v >= .5 && (m.sc.y - J.nose.y) / b.headUp < MOVES[id].shrug) f.shrug = 1;
@@ -1048,12 +1049,12 @@ function startIntro(t){
   g.setStart = g.introStart + (it.set === 0 ? per * 2 : per) * G.spb;      // first set of a move: two demo reps
   g.lastCount = -1; g.botFail = G.testBotFail || 8 + Math.floor(Math.random() * 6);
   const prev = g.last && g.last.sets && g.last.sets[it.move] ? g.last.sets[it.move][it.set] : null;
-  g.prev = prev == null ? null : prev; g.target = prev == null ? null : Math.min(REP_CAP, prev + 1);
+  g.prev = prev == null ? null : prev; g.target = prev == null ? null : Math.min(MOVES[it.move].cap, prev + 1);
   G.pops.push({text: MOVES[it.move].name.toLocaleUpperCase('tr-TR'), sub: 'SET ' + (it.set + 1) + '/' + G.gucSets, color: C.sun, t0: performance.now(), big: true});
 }
 function finishRep(t){
   const g = G.guc, r = g.rep, err = r.n ? r.err / r.n : 1, flag = Object.keys(r.flags)[0];
-  if (r.peak >= .85) {
+  if (r.peak >= MOVES[g.queue[g.idx].move].topAt) {
     g.reps++; g.lastFull = t; g.partialStreak = 0;
     const perfect = !flag && err < .22; if (perfect) g.perfect++;
     G.combo++; G.maxCombo = Math.max(G.maxCombo, G.combo);
@@ -1068,9 +1069,10 @@ function finishRep(t){
 }
 function endSet(t, reason){
   const g = G.guc, it = g.queue[g.idx];
-  (g.log[it.move] = g.log[it.move] || []).push({reps: g.reps, perfect: g.perfect, partial: g.partials});
+  (g.log[it.move] = g.log[it.move] || []).push({reps: g.reps, perfect: g.perfect, partial: g.partials, reason});
   g.doneSets++; g.idx++; g.live = null;
-  G.pops.push({text: 'SET BİTTİ', sub: g.reps + ' TEKRAR' + (reason === 'cap' ? ' · HAFİF GELDİ' : ' · DAMBILLARI BIRAK'), color: C.cream, t0: performance.now(), big: true});
+  const why = {cap: 'ÜST SINIRA ULAŞTIN', half: '2 YARIM TEKRAR ÜST ÜSTE', quiet: 'TEKRAR GELMEDİ', blind: 'KAMERA KOLLARINI GÖREMEDİ'}[reason];
+  G.pops.push({text: 'SET BİTTİ · ' + g.reps + ' TEKRAR', sub: why, color: C.cream, t0: performance.now(), big: true});
   sfx.end(true);
   if (g.idx >= g.queue.length) { g.phase = 'done'; g.phaseEnd = t + 1.6; return; }
   g.phase = 'rest'; g.phaseEnd = t + G.gucRest; g.pickCue = false;
@@ -1093,19 +1095,21 @@ function gucUpdate(t, J){
     }
     return;
   }
-  const id = g.queue[g.idx].move, per = periodSec(id), mm = J ? measureMove(id, J, G.body) : null, r = g.rep;
+  const id = g.queue[g.idx].move, per = periodSec(id), mm = J ? measureMove(id, J, G.body) : null, r = g.rep, mv = MOVES[id];
   g.live = mm;
+  g.seen = (g.seen || []).filter(x => x.t > t - per * 2); g.seen.push({t, ok: !!mm});        // how often the arms were visible lately
   if (mm) {
     r.err += Math.abs(clamp(mm.p) - targetP(g, t)); r.n++;
     for (const k in mm.f) r.flags[k] = 1;
     r.peak = Math.max(r.peak, mm.p);
-    if (r.state === 'down' && mm.p > .5) r.state = 'up';
+    if (r.state === 'down' && mm.p > mv.topAt * .6) r.state = 'up';
     else if (r.state === 'up' && mm.p < .18) finishRep(t);
     if (!g.cheered && g.reps >= 3 && r.state === 'up' && t - r.t0 > per * 1.6) { g.cheered = true; G.pops.push({text: 'DAYAN', color: C.sun, t0: performance.now()}); }
   }
   // the set ends at the rep cap, after two half reps in a row, or when no full rep arrives for two tempo cycles (near failure)
-  if (g.reps >= REP_CAP) endSet(t, 'cap');
-  else if (g.partialStreak >= 2 || t - g.lastFull > per * 2 + 1) endSet(t, 'fail');
+  if (g.reps >= mv.cap) endSet(t, 'cap');
+  else if (g.partialStreak >= 2) endSet(t, 'half');
+  else if (t - g.lastFull > per * 2 + 1) endSet(t, g.seen.filter(x => x.ok).length < g.seen.length * .5 ? 'blind' : 'quiet');
 }
 
 function gucBot(t){
@@ -1144,7 +1148,7 @@ function drawGucHud(t){
     if (g.phase === 'intro') text(m.cue, x, y + 68, `600 15px ${bodyFont}`, C.cream, 'left', W - 32);
     else {
       text(String(g.reps), W - 16, y + 52, `400 ${Math.min(64, W * .15)}px ${FONT_D}`, C.sun, 'right', W * .3);
-      text('TEKRAR', W - 16, y + 70, `800 12px ${bodyFont}`, C.cream, 'right', W * .3);
+      text('/ ' + m.cap + ' TEKRAR', W - 16, y + 70, `800 12px ${bodyFont}`, C.cream, 'right', W * .3);
     }
     // range meter: sun tick = where the guide is, mint dot = where you are
     const mx = W - 26, top = H * .36, bot = H * .7, py = p => bot - clamp(p) * (bot - top);
@@ -1176,7 +1180,10 @@ function endGuc(){
     rows.push(`<div class="mrow"><b>${MOVES[id].name}</b><span class="sets">${reps.join(' · ')}</span><small>${delta}</small><small>${perfect} mükemmel${partial ? ' · ' + partial + ' yarım' : ''}</small></div>`);
   }
   let note = G.demo ? 'Demo seansı. Hareketleri bot yaptı, kaydedilmedi.' : `${String(kg).replace('.', ',')} kg dambılla. Gelecek seansta her setin hedefi bugünkü tekrarının bir fazlası olacak.`;
-  if (Object.values(sets).some(r => r.some(n => n >= REP_CAP))) note += ' Bazı setler 25 tekrara ulaştı; o hareketlerde daha ağır dambıl düşünebilirsin.';
+  const full = MOVE_ORDER.filter(id => sets[id] && sets[id].every(n => n >= MOVES[id].cap)).map(id => MOVES[id].name);
+  if (full.length) note += ` ${full.join(', ')}: tüm setler üst sınıra ulaştı, daha ağır dambıla geçebilirsin.`;
+  const blind = MOVE_ORDER.filter(id => (g.log[id] || []).some(s => s.reason === 'blind')).map(id => MOVES[id].name);
+  if (blind.length) note += ` ${blind.join(', ')}: bir set kamera kollarını göremediği için erken bitti. Kameraya biraz daha dönük dur.`;
   if (!G.demo && Object.keys(sets).length) { const st = gucStore.get(); st.sessions.push({date: new Date().toISOString(), kg, sets}); st.sessions = st.sessions.slice(-40); gucStore.set(st); }
   $('gVol').textContent = fmt(vol) + ' kg'; $('gMoves').innerHTML = rows.join('');
   $('gMuscles').innerHTML = Object.entries(muscles).map(([k, v]) => `<span>${k} · ${v} set</span>`).join('');
